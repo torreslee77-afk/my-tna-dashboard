@@ -76,7 +76,7 @@ def analyze_tna(file_bytes):
 
         # 컬럼 매핑
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
-        fabric_in_fac_col, ex_factory_col, qty_col = None, None, None
+        fabric_in_fac_col, ex_factory_col, exf_qty_col, qty_col = None, None, None, None
 
         for col in df.columns:
             c_clean = clean_string(col)
@@ -88,6 +88,7 @@ def analyze_tna(file_bytes):
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
+            elif '납기별수량' in c_clean and 'QTY' in c_clean: exf_qty_col = col
             elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         sheet_rows = []
@@ -104,6 +105,9 @@ def analyze_tna(file_bytes):
             exf_date = pd.to_datetime(exf_val, errors='coerce')
             exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
             
+            exf_qty_val = row.get(exf_qty_col)
+            exf_qty_display = f"{int(exf_qty_val):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').isdigit() else '-'
+            
             sheet_rows.append({
                 "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
@@ -113,6 +117,7 @@ def analyze_tna(file_bytes):
                 "Line Start": ls_str,
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": exf_str,
+                "1st Ex-Qty": exf_qty_display,
                 "Qty": qty_val,
                 "Qty_Display": f"{qty_val:,}",
                 "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
@@ -143,7 +148,7 @@ if uploaded_file is not None:
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
                     for i, row in df.iterrows():
                         val = row['To LS (Wks)']
-                        if val == "In Production": color = '#d3d3d3' # 회색으로 변경
+                        if val == "In Production": color = '#d3d3d3'
                         else:
                             try:
                                 v = float(val)
