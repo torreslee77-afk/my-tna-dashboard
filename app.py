@@ -152,6 +152,6 @@ if uploaded_file is not None:
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
-                        "Qty": st.column_config.NumberColumn("Qty", format="%d"),
+                        "Qty": st.column_config.NumberColumn("Qty", format="{:,}"),
                     }
                 )
