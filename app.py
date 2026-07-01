@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 1. 페이지 설정
+# 1. Page Configuration
 st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
 
 st.markdown("""
@@ -38,6 +38,8 @@ def analyze_tna(file_bytes):
     for sheet_name in xls.sheet_names:
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         if df_raw.empty: continue
+        
+        # Identify header
         header_idx = None
         for idx, row in df_raw.iterrows():
             if any('STYLE' in clean_string(v) for v in row.values if v):
@@ -55,9 +57,15 @@ def analyze_tna(file_bytes):
             style = str(row.get(next((c for c in df.columns if 'STYLE' in clean_string(c)), None), '')).strip()
             if not style or style.lower() in ['nan', 'none']: continue
             
+            # Extract values carefully to avoid Pandas truth ambiguity
             ls_val = row.get(next((c for c in df.columns if 'START' in clean_string(c)), None))
             ls_str = pd.to_datetime(ls_val, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_val, errors='coerce')) else '-'
+            
             qty_raw = row.get(next((c for c in df.columns if any(k in clean_string(c) for k in ['QTY', '수량'])), None), 0)
+            
+            # Safe Risk evaluation
+            infac_val = row.get(next((c for c in df.columns if 'INFAC' in clean_string(c)), None))
+            is_high_risk = pd.isnull(infac_val)
             
             sheet_rows.append({
                 "Style": style,
@@ -69,7 +77,7 @@ def analyze_tna(file_bytes):
                 "Line End": pd.to_datetime(row.get(next((c for c in df.columns if 'END' in clean_string(c) and 'START' not in clean_string(c)), None)), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(next((c for c in df.columns if 'END' in clean_string(c) and 'START' not in clean_string(c)), None)), errors='coerce')) else '-',
                 "1st Ex-Factory": pd.to_datetime(row.get(next((c for c in df.columns if any(k in clean_string(c) for k in ['1ST', 'EXFAC'])), None)), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(next((c for c in df.columns if any(k in clean_string(c) for k in ['1ST', 'EXFAC'])), None)), errors='coerce')) else '-',
                 "Qty": int(pd.to_numeric(str(qty_raw).replace(',', ''), errors='coerce') or 0),
-                "Risk": '🔴 High' if pd.isnull(row.get(next((c for c in df.columns if 'INFAC' in clean_string(c)), None))) else '🟢 Low'
+                "Risk": '🔴 High' if is_high_risk else '🟢 Low'
             })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
@@ -83,6 +91,7 @@ if uploaded_file is not None:
         for num, sheet_name in enumerate(results.keys()):
             with tabs[num]:
                 df = results[sheet_name]
+                # UI Components
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df):,}</h2></div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df[df["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
@@ -90,21 +99,19 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df[df["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df[df["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                def color_rows(df_styled):
-                    styles = pd.DataFrame('', index=df_styled.index, columns=df_styled.columns)
-                    for i, row in df_styled.iterrows():
-                        val = row['To LS (Wks)']
-                        if val == "In Production": color = '#ffcccc'
-                        else:
-                            try:
-                                v = float(val)
-                                color = '#ffcccc' if v <= 2 else '#ffe6cc' if v <= 4 else '#d4edda'
-                            except: color = '#ffffff'
-                        styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
-                    return styles
+                # Apply conditional formatting
+                def color_rows(row):
+                    val = row['To LS (Wks)']
+                    if val == "In Production": color = '#ffcccc'
+                    else:
+                        try:
+                            v = float(val)
+                            color = '#ffcccc' if v <= 2 else '#ffe6cc' if v <= 4 else '#d4edda'
+                        except: color = '#ffffff'
+                    return [f'background-color: {color}' if col == 'To LS (Wks)' else '' for col in row.index]
 
                 st.dataframe(
-                    df.style.apply(color_rows, axis=None), 
+                    df.style.apply(color_rows, axis=1), 
                     use_container_width=True, hide_index=True,
                     column_config={"Qty": st.column_config.NumberColumn("Qty", format="%d")}
                 )
