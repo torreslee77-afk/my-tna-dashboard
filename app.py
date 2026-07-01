@@ -19,15 +19,14 @@ st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</d
 
 # 날짜 계산 함수
 def calculate_weeks(ls_val):
-    if pd.isnull(ls_val) or ls_val == '-': return "N/A"
+    if pd.isnull(ls_val) or ls_val == '-': return None # 색상 처리를 위해 None 반환
     try:
         today = datetime(2026, 7, 1)
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
-        if delta < 0: return "Under Production"
-        if delta == 0: return "Today"
-        return f"{round(delta / 7, 1)} weeks"
-    except: return "N/A"
+        if delta < 0: return -1 # 생산 중/경과
+        return round(delta / 7, 1)
+    except: return None
 
 def clean_string(val):
     try:
@@ -99,7 +98,7 @@ def analyze_tna(file_bytes):
             sheet_rows.append({
                 "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
-                "Weeks to Line Start": calculate_weeks(ls_str),
+                "To LS (Wks)": calculate_weeks(ls_str),
                 "Line Start": ls_str,
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
@@ -121,7 +120,7 @@ if uploaded_file is not None:
             with tabs[num]:
                 df_sheet = results[sheet_name]
                 
-                # 요약 박스 (복구)
+                # 요약 박스
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
@@ -129,15 +128,21 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 데이터 프레임 출력 (컬럼 너비 설정)
+                # 데이터 프레임 출력 (색상 규칙 적용)
+                def color_weeks(val):
+                    if val is None or val == -1: return 'background-color: #ffcccc' # Red (경과)
+                    if val <= 2: return 'background-color: #ffcccc' # Red
+                    if val <= 4: return 'background-color: #ffe6cc' # Orange
+                    return 'background-color: #d4edda' # Green
+
                 st.dataframe(
-                    df_sheet, 
+                    df_sheet.style.applymap(color_weeks, subset=['To LS (Wks)']),
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
                         "Style": st.column_config.TextColumn("Style", width="medium"),
                         "Division": st.column_config.TextColumn("Division", width="medium"),
-                        "Weeks to Line Start": st.column_config.TextColumn("Weeks to Line Start", width="small"),
+                        "To LS (Wks)": st.column_config.NumberColumn("To LS (Wks)", width="small"),
                         "Line Start": st.column_config.TextColumn("Line Start", width="small"),
                         "Graphic": st.column_config.TextColumn("Graphic", width="small"),
                         "Wash": st.column_config.TextColumn("Wash", width="small"),
