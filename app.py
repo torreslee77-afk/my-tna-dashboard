@@ -14,7 +14,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# [수정] 메인 제목을 MENS ACTIVE TNA SUMMARY로 변경
 st.markdown('<div class="main-title">📊 MENS ACTIVE TNA SUMMARY</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
 
@@ -112,7 +111,6 @@ def analyze_tna(file_bytes):
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            # [수정] Graphic / Wash 동그라미는 초록색 이모지, 엑스는 빨간색 이모지로 변경
             has_graphic = '🔴 X'
             if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
             elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
@@ -164,13 +162,13 @@ def analyze_tna(file_bytes):
                 if i == 0 and len(styles_list) > 0:
                     allocated_qty += qty_val % len(styles_list)
 
-                # [수정] 차트 구성 항목에서 'Factory' 제거
+                # [오타 수정 완료] 'Line Start' 날짜 포맷팅 에러 해결
                 sheet_rows.append({
                     "Style": single_style,
                     "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
                     "Graphic": has_graphic,
                     "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m('%m/%d'),
+                    "Line Start": line_start.strftime('%m/%d'),
                     "Fabric Due": fabric_due.strftime('%m/%d'),
                     "Fabric Status": fabric_status,
                     "FPP Due": fpp_due.strftime('%m/%d'),
