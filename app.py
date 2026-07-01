@@ -17,9 +17,15 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary</div>', unsafe_allow_html=True)
 
+# 💡 [수정 1] pd.isna()로 인한 Series/배열 에러를 원천 차단하기 위해 문자열 강제 변환 후 검사
 def clean_string(val):
-    if pd.isna(val): return ""
-    return str(val).strip().upper().replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
+    try:
+        s_val = str(val).strip().upper()
+        if s_val in ['NAN', 'NONE', '<NA>', 'NAT', 'NULL', '']: 
+            return ""
+        return s_val.replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
+    except:
+        return ""
 
 def analyze_tna(file_bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
@@ -49,8 +55,19 @@ def analyze_tna(file_bytes):
             elif current_parent: combined_columns.append(current_parent)
             else: combined_columns.append("Unnamed")
                 
+        # 💡 [수정 2] 컬럼명 중복으로 인한 에러 방지 로직 (컬럼명이 같으면 _1, _2 등을 부여)
+        seen = {}
+        unique_columns = []
+        for col in combined_columns:
+            if col not in seen:
+                seen[col] = 0
+                unique_columns.append(col)
+            else:
+                seen[col] += 1
+                unique_columns.append(f"{col}_{seen[col]}")
+                
         df = df_raw.iloc[header_idx + 2:].copy()
-        df.columns = combined_columns
+        df.columns = unique_columns
 
         style_col, buyer_col = None, None
         print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
@@ -73,9 +90,10 @@ def analyze_tna(file_bytes):
 
         if style_col is None: continue
 
-        # 💡 [오류 수정 부분] 리스트 대신 딕셔너리를 사용하여 에러 없이 None 치환 후 ffill() 수행
+        # 💡 [수정 3] 수량 빈칸(ffill) 채우기를 가장 에러가 없는 인덱싱 방식으로 변경
         if qty_col:
-            df[qty_col] = df[qty_col].astype(str).str.strip().replace({'nan': None, 'NaN': None, 'None': None, '': None, ' ': None})
+            df[qty_col] = df[qty_col].astype(str).str.strip()
+            df.loc[df[qty_col].isin(['nan', 'NaN', 'None', '<NA>', '', ' ']), qty_col] = None
             df[qty_col] = df[qty_col].ffill()
             
         sheet_rows = []
@@ -84,33 +102,38 @@ def analyze_tna(file_bytes):
             if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'): continue
                 
             line_start_raw = row.get(line_start_col)
-            if pd.isna(line_start_raw) or str(line_start_raw).strip() in ['', 'nan', 'None']: continue
+            if str(line_start_raw).strip().lower() in ['', 'nan', 'none', 'nat', '<na>']: continue
             try: line_start = pd.to_datetime(line_start_raw)
             except: continue
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
             has_graphic = '🔴 X'
-            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
-            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
+            print_val = str(row.get(print_col, 'nan')).strip().lower()
+            emb_val = str(row.get(emb_col, 'nan')).strip().lower()
+            if print_col and print_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_graphic = '🟢 O'
+            elif emb_col and emb_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_graphic = '🟢 O'
                 
             has_wash = '🔴 X'
-            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
+            fwash_val = str(row.get(fwash_col, 'nan')).strip().lower()
+            gwash_val = str(row.get(gwash_col, 'nan')).strip().lower()
+            gdye_val = str(row.get(gdye_col, 'nan')).strip().lower()
+            if fwash_col and fwash_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
+            elif gwash_col and gwash_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
+            elif gdye_col and gdye_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
             
             days_buffer = 14 if ('🟢 O' in has_graphic or '🟢 O' in has_wash) else 7
             fabric_due = line_start - timedelta(days=14)
             fpp_due = line_start - timedelta(days=14)
             pps_due = line_start - timedelta(days=days_buffer)
             
-            fabric_in_fac = row.get(fabric_in_fac_col)
-            fabric_status = "🔴 Late" if pd.isna(fabric_in_fac) else "🟢 Ready"
+            fabric_in_fac = str(row.get(fabric_in_fac_col, 'nan')).strip().lower()
+            fabric_status = "🔴 Late" if fabric_in_fac in ['nan', 'none', 'nat', '<na>', ''] else "🟢 Ready"
             
             pp_appd_raw = str(row.get(pps_appd_col, '')).strip() if pps_appd_col else ""
             if pp_appd_raw.upper() in ['N/A']: pps_status = "⚪ N/A"
             elif pp_appd_raw.upper() in ['C/O']: pps_status = "⚪ C/O"
-            elif pp_appd_raw == 'nan' or not pp_appd_raw: pps_status = "➖"
+            elif pp_appd_raw.lower() in ['nan', 'none', '']: pps_status = "➖"
             else:
                 try: pps_status = pd.to_datetime(pp_appd_raw).strftime('%m/%d')
                 except: pps_status = pp_appd_raw
@@ -119,23 +142,22 @@ def analyze_tna(file_bytes):
             if fabric_status == "🔴 Late": risk = "🔴 High"
                 
             buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip() if buyer_col else 'YAKJIN'
+            if buyer_val.lower() in ['nan', 'none', '']: buyer_val = 'YAKJIN'
             
             ex_fac_val = '-'
-            if ex_factory_col and pd.notna(row.get(ex_factory_col)):
-                try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
-                except: ex_fac_val = str(row.get(ex_factory_col))
+            if ex_factory_col:
+                ex_raw = row.get(ex_factory_col)
+                if str(ex_raw).strip().lower() not in ['nan', 'none', 'nat', '<na>', '']:
+                    try: ex_fac_val = pd.to_datetime(ex_raw).strftime('%m/%d')
+                    except: ex_fac_val = str(ex_raw)
             
-            # 💡 [수량 파싱 예외 처리 강화] 안정적으로 숫자로 변환합니다.
             qty_val = 0
             if qty_col:
                 raw_val = row.get(qty_col)
-                if pd.notna(raw_val):
-                    try: 
-                        clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
-                        if clean_qty_str not in ['nan', 'None', '']:
-                            qty_val = int(float(clean_qty_str))
-                    except: 
-                        qty_val = 0
+                clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
+                if clean_qty_str.lower() not in ['nan', 'none', '<na>', '']:
+                    try: qty_val = int(float(clean_qty_str))
+                    except: qty_val = 0
                 
             for i, single_style in enumerate(styles_list):
                 allocated_qty = qty_val // len(styles_list)
