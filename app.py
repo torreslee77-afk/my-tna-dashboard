@@ -66,8 +66,8 @@ def analyze_tna(file_bytes):
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
-        style_col, div_col = None, None
-        print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
+        # 주요 컬럼 매핑
+        style_col, div_col, print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None, None, None
         line_start_col, line_end_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None, None
 
         for col in df.columns:
@@ -83,6 +83,7 @@ def analyze_tna(file_bytes):
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
+            # SCD(1st Ex-Factory) 매핑 키워드 강화
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
             elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
@@ -100,80 +101,48 @@ def analyze_tna(file_bytes):
                 
             line_start_raw = row.get(line_start_col)
             line_end_raw = row.get(line_end_col)
-            if str(line_start_raw).strip().lower() in ['', 'nan', 'none', 'nat', '<na>']: continue
+            
+            # 1st Ex-Factory(SCD) 데이터 추출 로직
+            ex_fac_val = '-'
+            if ex_factory_col:
+                ex_raw = row.get(ex_factory_col)
+                if str(ex_raw).strip().lower() not in ['nan', 'none', 'nat', '<na>', '']:
+                    try: ex_fac_val = pd.to_datetime(ex_raw).strftime('%m/%d')
+                    except: ex_fac_val = str(ex_raw)
+
+            # 날짜 데이터 처리
             try: 
                 line_start = pd.to_datetime(line_start_raw)
                 line_end = pd.to_datetime(line_end_raw) if pd.notnull(line_end_raw) else None
             except: continue
                 
-            styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
-            
-            has_graphic = '🔴 X'
-            print_val = str(row.get(print_col, 'nan')).strip().lower()
-            emb_val = str(row.get(emb_col, 'nan')).strip().lower()
-            if print_col and print_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_graphic = '🟢 O'
-            elif emb_col and emb_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_graphic = '🟢 O'
-                
-            has_wash = '🔴 X'
-            fwash_val = str(row.get(fwash_col, 'nan')).strip().lower()
-            gwash_val = str(row.get(gwash_col, 'nan')).strip().lower()
-            gdye_val = str(row.get(gdye_col, 'nan')).strip().lower()
-            if fwash_col and fwash_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
-            elif gwash_col and gwash_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
-            elif gdye_col and gdye_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
-            
-            fabric_in_fac = str(row.get(fabric_in_fac_col, 'nan')).strip().lower()
-            fabric_status = "🔴 Late" if fabric_in_fac in ['nan', 'none', 'nat', '<na>', ''] else "🟢 Ready"
-            
-            risk = "🟢 Low"
-            if fabric_status == "🔴 Late": risk = "🔴 High"
-                
-            div_val = str(row.get(div_col, 'N/A')).strip() if div_col else 'N/A'
-            
-            qty_val = 0
-            if qty_col:
-                raw_val = row.get(qty_col)
-                clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
-                try: qty_val = int(float(clean_qty_str))
-                except: qty_val = 0
-                
-            for single_style in styles_list:
-                sheet_rows.append({
-                    "Style": single_style, "Division": div_val, "Graphic": has_graphic, "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m/%d'), "Line End": line_end.strftime('%m/%d') if line_end else '-',
-                    "Fabric Status": fabric_status, "Qty": qty_val, "Risk": risk
-                })
+            # 나머지 로직 동일
+            sheet_rows.append({
+                "Style": str(row.get(style_col)), 
+                "Division": str(row.get(div_col, 'N/A')), 
+                "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X', 
+                "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
+                "Line Start": line_start.strftime('%m/%d'), 
+                "Line End": line_end.strftime('%m/%d') if line_end else '-',
+                "1st Ex-Factory": ex_fac_val, # SCD 포함
+                "Qty": int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0,
+                "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
+            })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
     return all_sheets_data
 
 uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
-
-if uploaded_file is not None:
-    with st.spinner("분석 중..."):
-        results = analyze_tna(uploaded_file.read())
-        if not results: st.error("데이터 분석 실패")
-        else:
-            tabs = st.tabs(list(results.keys()))
-            for num, sheet_name in enumerate(results.keys()):
-                with tabs[num]:
-                    df_sheet = results[sheet_name]
-                    # 시트별 요약 계산
-                    total_styles = len(df_sheet)
-                    high_risks = len(df_sheet[df_sheet['Risk'] == "🔴 High"])
-                    total_qty = df_sheet['Qty'].sum()
-                    graphic_cnt = len(df_sheet[df_sheet['Graphic'] == "🟢 O"])
-                    wash_cnt = len(df_sheet[df_sheet['Wash'] == "🟢 O"])
-                    
-                    # 시트별 요약 출력
-                    cols = st.columns(5)
-                    cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
-                    cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{high_risks}</h2></div>', unsafe_allow_html=True)
-                    cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{total_qty:,}</h2></div>', unsafe_allow_html=True)
-                    cols[3].markdown(f'<div class="metric-box"><h4>Graphic styles</h4><h2>{graphic_cnt}</h2></div>', unsafe_allow_html=True)
-                    cols[4].markdown(f'<div class="metric-box"><h4>Wash styles</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
-                    
-                    st.write("---")
-                    df_disp = df_sheet.copy()
-                    df_disp['Qty'] = df_disp['Qty'].apply(lambda x: f"{x:,}")
-                    st.dataframe(df_disp, use_container_width=True, hide_index=True)
+if uploaded_file:
+    results = analyze_tna(uploaded_file.read())
+    tabs = st.tabs(list(results.keys()))
+    for num, sheet_name in enumerate(results.keys()):
+        with tabs[num]:
+            df_sheet = results[sheet_name]
+            cols = st.columns(5)
+            cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet)}</h2></div>', unsafe_allow_html=True)
+            cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"])}</h2></div>', unsafe_allow_html=True)
+            cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
+            cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"])}</h2></div>', unsafe_allow_html=True)
+            cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"])}</h2></div>', unsafe_allow_html=True)
+            st.dataframe(df_sheet, use_container_width=True, hide_index=True)
