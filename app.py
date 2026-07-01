@@ -8,19 +8,14 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 1. 맨 위에 여백 추가 */
     .block-container { padding-top: 3rem; }
-    
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
-    
-    /* 2. 글자 크기 3배 키우기 */
     .main-title { font-size: 3em; font-weight: bold; color: #1E3A8A; margin-bottom: 25px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 
-# 날짜 계산 함수 (문자열 반환)
 def get_weeks_display(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
@@ -74,7 +69,6 @@ def analyze_tna(file_bytes):
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
-        # 컬럼 매핑
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
         fabric_in_fac_col, ex_factory_col, exf_qty_col, qty_col = None, None, None, None
 
@@ -87,9 +81,10 @@ def analyze_tna(file_bytes):
             elif 'START' in c_clean: line_start_col = col
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
-            elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
-            elif '납기별수량' in c_clean and 'QTY' in c_clean: exf_qty_col = col
-            elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
+            if '납기별수량' in c_clean:
+                if 'EXF' in c_clean: ex_factory_col = col
+                elif 'QTY' in c_clean: exf_qty_col = col
+            elif any(k in c_clean for k in ['TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         sheet_rows = []
         for _, row in df.iterrows():
@@ -99,14 +94,14 @@ def analyze_tna(file_bytes):
             ls_date = row.get(line_start_col)
             ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
             
-            qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
-            
             exf_val = row.get(ex_factory_col)
             exf_date = pd.to_datetime(exf_val, errors='coerce')
             exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
             
             exf_qty_val = row.get(exf_qty_col)
-            exf_qty_display = f"{int(exf_qty_val):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').isdigit() else '-'
+            exf_qty_display = f"{int(float(str(exf_qty_val).replace(',', ''))):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').replace(',','').isdigit() else '-'
+            
+            qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
             sheet_rows.append({
                 "Style": style_raw,
@@ -135,7 +130,6 @@ if uploaded_file is not None:
             with tabs[num]:
                 df_sheet = results[sheet_name]
                 
-                # 요약 박스
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
@@ -143,7 +137,6 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 색상 규칙
                 def color_rows(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
                     for i, row in df.iterrows():
@@ -159,10 +152,6 @@ if uploaded_file is not None:
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     return styles
 
+                # 수정된 부분: Qty_Display를 Qty로 이름 변경 및 1st Ex-Qty 포함
                 display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
-                
-                st.dataframe(
-                    display_df.style.apply(color_rows, axis=None), 
-                    use_container_width=True, 
-                    hide_index=True
-                )
+                st.dataframe(display_df.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
