@@ -87,7 +87,7 @@ def analyze_tna(file_bytes):
             elif 'START' in c_clean: line_start_col = col
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
-            elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
+            elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
             elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         sheet_rows = []
@@ -100,6 +100,10 @@ def analyze_tna(file_bytes):
             
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
+            exf_val = row.get(ex_factory_col)
+            exf_date = pd.to_datetime(exf_val, errors='coerce')
+            exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
+            
             sheet_rows.append({
                 "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
@@ -108,7 +112,7 @@ def analyze_tna(file_bytes):
                 "To LS (Wks)": get_weeks_display(ls_str),
                 "Line Start": ls_str,
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
-                "1st Ex-Factory": pd.to_datetime(row.get(ex_factory_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(ex_factory_col), errors='coerce')) else '-',
+                "1st Ex-Factory": exf_str,
                 "Qty": qty_val,
                 "Qty_Display": f"{qty_val:,}",
                 "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
