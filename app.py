@@ -36,12 +36,12 @@ def analyze_tna(file_bytes):
     all_sheets_data = {}
     
     for sheet_name in xls.sheet_names:
-        # .xls 파일 구조적 특성을 고려하여 헤더를 단일 행으로 강제 병합하여 읽기
+        # .xls 파일 구조적 특성을 고려하여 1, 2행을 로우 데이터로 먼저 읽음
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         if df_raw.empty or len(df_raw) < 2:
             continue
             
-        # 1행과 2행을 합쳐서 하나의 고유한 컬럼명 리스트 생성 (2중 헤더 대응)
+        # 1행(대분류)과 2행(소분류)을 깨끗하게 병합하여 단일 헤더 만들기
         row0 = df_raw.iloc[0].astype(str).replace('nan', '').str.strip()
         row1 = df_raw.iloc[1].astype(str).replace('nan', '').str.strip()
         
@@ -51,7 +51,6 @@ def analyze_tna(file_bytes):
             if p != "":
                 current_parent = p
             
-            # 부모와 자식 제목 결합
             if current_parent and s:
                 combined_columns.append(f"{current_parent} {s}")
             elif s:
@@ -61,11 +60,11 @@ def analyze_tna(file_bytes):
             else:
                 combined_columns.append("Unnamed")
                 
-        # 실제 데이터 바디 분리 및 컬럼명 재지정
+        # 헤더 아래 진짜 데이터만 분리
         df = df_raw.iloc[2:].copy()
         df.columns = combined_columns
 
-        # --- 유연한 컬럼 매칭 알고리즘 ---
+        # --- 약진 명세서 기준 컬럼 매칭 ---
         style_col = find_column(df.columns, ['STYLE', 'STYLE#', '배정STYLE'])
         buyer_col = find_column(df.columns, ['BUYER', 'DIVISION', '담당'])
         factory_col = find_column(df.columns, ['FACTORY'])
@@ -79,7 +78,7 @@ def analyze_tna(file_bytes):
         line_start_col = find_column(df.columns, ['START'], 'LINE') or find_column(df.columns, ['START'])
         fabric_in_fac_col = find_column(df.columns, ['INFAC'], 'FABRIC') or find_column(df.columns, ['INFAC'])
         pps_appd_col = find_column(df.columns, ['APPD'], 'PP') or find_column(df.columns, ['PP'])
-        ex_factory_col = find_column(df.columns, ['1STS/D', 'EXF', 'SD'])
+        ex_factory_col = find_column(df.columns, ['1STS/D', 'EXF', 'SD', 'EXF'])
         qty_col = find_column(df.columns, ['TOTALORDERQTY', 'QTY'])
 
         if style_col is None:
@@ -91,6 +90,7 @@ def analyze_tna(file_bytes):
             if not style or style == 'nan' or style.upper().startswith('TOTAL'):
                 continue
                 
+            # Graphic / Wash 자동 판정
             has_graphic = 'X'
             if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x']:
                 has_graphic = 'O'
@@ -113,6 +113,7 @@ def analyze_tna(file_bytes):
             except:
                 continue
             
+            # 워시/그래픽 여부에 따른 버퍼 룰 적용
             days_buffer = 14 if (has_graphic == 'O' or has_wash == 'O') else 7
             fabric_due = line_start - timedelta(days=14)
             fpp_due = line_start - timedelta(days=14)
