@@ -18,13 +18,11 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
-# 날짜 계산 함수 추가
+# 날짜 계산 함수
 def calculate_weeks(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return "N/A"
     try:
-        # 오늘 날짜 2026-07-01
         today = datetime(2026, 7, 1)
-        # ls_val이 문자열 'MM/DD' 형식이면 2026년 붙여서 변환
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
         if delta < 0: return "Under Production"
@@ -46,18 +44,17 @@ def analyze_tna(file_bytes):
     for sheet_name in xls.sheet_names:
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         if df_raw.empty: continue
-            
+        
+        # 이전의 헤더 매핑 로직 유지 (동일)
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
             if any('STYLE' in v for v in row_values if v):
-                header_idx = idx
-                break
+                header_idx = idx; break
         if header_idx is None: continue
             
         row0 = df_raw.iloc[header_idx].astype(str).replace('nan', '').str.strip()
         row1 = df_raw.iloc[header_idx + 1].astype(str).replace('nan', '').str.strip() if (header_idx + 1) < len(df_raw) else row0
-        
         combined_columns = []
         current_parent = ""
         for p, s in zip(row0, row1):
@@ -70,13 +67,9 @@ def analyze_tna(file_bytes):
         seen = {}
         unique_columns = []
         for col in combined_columns:
-            if col not in seen:
-                seen[col] = 0
-                unique_columns.append(col)
-            else:
-                seen[col] += 1
-                unique_columns.append(f"{col}_{seen[col]}")
-                
+            if col not in seen: seen[col] = 0; unique_columns.append(col)
+            else: seen[col] += 1; unique_columns.append(f"{col}_{seen[col]}")
+        
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
@@ -96,47 +89,30 @@ def analyze_tna(file_bytes):
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
             elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
-        if style_col is None: continue
-            
         sheet_rows = []
         for _, row in df.iterrows():
             style_raw = str(row.get(style_col, '')).strip()
-            if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'): continue
+            if not style_raw or style_raw.lower() in ['nan', 'none', '']: continue
             
-            styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
+            ls_date = row.get(line_start_col)
+            ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
             
-            try:
-                ls_date = row.get(line_start_col)
-                ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
-                
-                le_date = row.get(line_end_col)
-                le_str = pd.to_datetime(le_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(le_date, errors='coerce')) else '-'
-                
-                ex_fac_raw = row.get(ex_factory_col)
-                ex_fac_str = pd.to_datetime(ex_fac_raw, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ex_fac_raw, errors='coerce')) else '-'
-                
-                qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
-                allocated_qty = qty_val // len(styles_list)
-
-                for single_style in styles_list:
-                    sheet_rows.append({
-                        "Style": single_style,
-                        "Division": str(row.get(div_col, 'N/A')),
-                        "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
-                        "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
-                        "Line Start": ls_str,
-                        "Weeks to Line Start": calculate_weeks(ls_str),
-                        "Line End": le_str,
-                        "1st Ex-Factory": ex_fac_str,
-                        "Qty": allocated_qty,
-                        "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
-                    })
-            except: continue
-                
+            sheet_rows.append({
+                "Style": style_raw,
+                "Division": str(row.get(div_col, 'N/A')),
+                "Weeks to Line Start": calculate_weeks(ls_str), # 이동
+                "Line Start": ls_str,
+                "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
+                "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
+                "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
+                "1st Ex-Factory": pd.to_datetime(row.get(ex_factory_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(ex_factory_col), errors='coerce')) else '-',
+                "Qty": int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0,
+                "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
+            })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
 
-# 파일 업로더 및 UI
+# 메인 UI
 uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
@@ -146,14 +122,22 @@ if uploaded_file is not None:
         for num, sheet_name in enumerate(results.keys()):
             with tabs[num]:
                 df_sheet = results[sheet_name]
-                df_disp = df_sheet.copy()
-                df_disp['Qty'] = df_disp['Qty'].apply(lambda x: f"{x:,}")
                 
-                cols = st.columns(5)
-                cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
-                cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                
-                st.dataframe(df_disp, use_container_width=True, hide_index=True)
+                # 컬럼 설정 및 넓이 조정
+                st.dataframe(
+                    df_sheet, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "Style": st.column_config.TextColumn("Style", width="medium"),
+                        "Division": st.column_config.TextColumn("Division", width="medium"),
+                        "Weeks to Line Start": st.column_config.TextColumn("Weeks to Line Start", width="small"),
+                        "Line Start": st.column_config.TextColumn("Line Start", width="small"),
+                        "Graphic": st.column_config.TextColumn("Graphic", width="small"),
+                        "Wash": st.column_config.TextColumn("Wash", width="small"),
+                        "Line End": st.column_config.TextColumn("Line End", width="small"),
+                        "1st Ex-Factory": st.column_config.TextColumn("1st Ex-Factory", width="small"),
+                        "Qty": st.column_config.NumberColumn("Qty", format="%d", width="small"),
+                        "Risk": st.column_config.TextColumn("Risk", width="small"),
+                    }
+                )
