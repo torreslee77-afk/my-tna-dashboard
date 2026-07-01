@@ -8,7 +8,13 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
+    /* 1. 맨 위에 여백 추가 */
+    .block-container { padding-top: 3rem; }
+    
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
+    
+    /* 2. 글자 크기 3배 키우기 */
+    .main-title { font-size: 3em; font-weight: bold; color: #1E3A8A; margin-bottom: 25px; }
     </style>
 """, unsafe_allow_html=True)
 
