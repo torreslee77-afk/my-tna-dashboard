@@ -8,7 +8,7 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 💡 [수정 1] 상단 빈 공간 제거 */
+    /* 상단 빈 공간 제거 */
     .block-container { padding-top: 2rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
@@ -119,9 +119,6 @@ def analyze_tna(file_bytes):
             elif gwash_col and gwash_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
             elif gdye_col and gdye_val not in ['', 'nan', 'none', 'x', '🔴 x']: has_wash = '🟢 O'
             
-            # ... (기존 로직 유지) ...
-            days_buffer = 14 if ('🟢 O' in has_graphic or '🟢 O' in has_wash) else 7
-            fabric_due = line_start - timedelta(days=14)
             fabric_in_fac = str(row.get(fabric_in_fac_col, 'nan')).strip().lower()
             fabric_status = "🔴 Late" if fabric_in_fac in ['nan', 'none', 'nat', '<na>', ''] else "🟢 Ready"
             
@@ -169,20 +166,18 @@ if uploaded_file is not None:
         results = analyze_tna(uploaded_file.read())
         if not results: st.error("데이터 분석 실패")
         else:
-            # 💡 [수정 2] 요약 지표 추가
             total_styles = sum(len(df) for df in results.values())
             high_risks = sum(len(df[df['Risk'] == "🔴 High"]) for df in results.values())
             total_qty = sum(df['Qty'].sum() for df in results.values())
             graphic_cnt = sum(len(df[df['Graphic'] == "🟢 O"]) for df in results.values())
             wash_cnt = sum(len(df[df['Wash'] == "🟢 O"]) for df in results.values())
             
-            # 💡 [수정 3] 5열로 조정
             cols = st.columns(5)
-            cols[0].markdown(f'<div class="metric-box"><h4>총 스타일</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
+            cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
             cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{high_risks}</h2></div>', unsafe_allow_html=True)
-            cols[2].markdown(f'<div class="metric-box"><h4>총 수량</h4><h2>{total_qty:,}</h2></div>', unsafe_allow_html=True)
-            cols[3].markdown(f'<div class="metric-box"><h4>그래픽 오더</h4><h2>{graphic_cnt}</h2></div>', unsafe_allow_html=True)
-            cols[4].markdown(f'<div class="metric-box"><h4>워시 오더</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
+            cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{total_qty:,}</h2></div>', unsafe_allow_html=True)
+            cols[3].markdown(f'<div class="metric-box"><h4>Graphic styles</h4><h2>{graphic_cnt}</h2></div>', unsafe_allow_html=True)
+            cols[4].markdown(f'<div class="metric-box"><h4>Wash styles</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
             
             st.write("---")
             tabs = st.tabs(list(results.keys()))
