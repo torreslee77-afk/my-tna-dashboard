@@ -152,6 +152,6 @@ if uploaded_file is not None:
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     return styles
 
-                # 수정된 부분: Qty_Display를 Qty로 이름 변경 및 1st Ex-Qty 포함
+                # '1st Ex-Qty'가 포함되도록 drop과 rename을 조정했습니다.
                 display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
                 st.dataframe(display_df.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
