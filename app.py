@@ -105,7 +105,7 @@ def analyze_tna(file_bytes):
             sheet_rows.append({
                 "Division": str(row.get(div_col, 'N/A')),
                 "Style": style_raw,
-                "Qty": qty_val,
+                "Qty": f"{qty_val:,}",
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
                 "To LS (Wks)": get_weeks_display(ls_str),
@@ -128,10 +128,14 @@ if uploaded_file is not None:
             with tabs[num]:
                 df_sheet = results[sheet_name]
                 
+                # 계산용 데이터 생성 (Qty 컬럼 문자열에서 콤마 제거)
+                df_calc = df_sheet.copy()
+                df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
+                
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
+                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
