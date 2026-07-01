@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import io
 
 # 1. 페이지 기본 설정 및 디자인
-st.set_page_config(page_title="MENS ACTIVE TNA SUMMARY", page_icon="📊", layout="wide")
+st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
 
 st.markdown("""
     <style>
@@ -14,8 +14,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">📊 MENS ACTIVE TNA SUMMARY</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
+# [수정] 메인 제목과 서브 제목 반영
+st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">TNA Analysis summary</div>', unsafe_allow_html=True)
 
 # Helper: 대소문자, 공백, 특수문자 제거 후 키워드 매칭
 def clean_string(val):
@@ -162,7 +163,6 @@ def analyze_tna(file_bytes):
                 if i == 0 and len(styles_list) > 0:
                     allocated_qty += qty_val % len(styles_list)
 
-                # [오타 수정 완료] 'Line Start' 날짜 포맷팅 에러 해결
                 sheet_rows.append({
                     "Style": single_style,
                     "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
