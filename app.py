@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 업로드하는 시점의 오늘 날짜 (2026-07-01)
+# 오늘 날짜 (2026-07-01)
 TODAY = pd.to_datetime('2026-07-01')
 
 # 1. 페이지 기본 설정 및 디자인
@@ -22,25 +22,23 @@ st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</d
 st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
 def parse_date(date_val):
-    """날짜 파싱 시 연도를 2026년으로 고정"""
-    if pd.isnull(date_val): return None
+    """날짜 문자열(MM/DD)을 2026년으로 강제 변환하여 정확하게 파싱"""
+    if pd.isnull(date_val) or str(date_val).strip() == '-': return None
     try:
         s = str(date_val).strip()
-        dt = pd.to_datetime(s, format='%m/%d', errors='ignore')
-        if dt.year == 1900: 
-            dt = dt.replace(year=2026)
-        return dt
+        # '/'가 포함된 MM/DD 형태를 2026/MM/DD로 강제 조합
+        return pd.to_datetime(f"2026/{s}")
     except:
-        return pd.to_datetime(date_val, errors='coerce')
+        return None
 
 def get_weeks_to_line_start(line_start):
-    """남은 기간을 숫자로 표시 (예: 2.5 weeks)"""
-    if pd.isnull(line_start): return "-"
-    
+    """오늘(2026-07-01) 기준 남은 주차 계산 (Under Production 표시)"""
     ls = parse_date(line_start)
+    if ls is None: return "-"
+    
     delta = (ls - TODAY).days
     
-    if delta < 0: return "Passed"
+    if delta < 0: return "Under Production"
     elif delta == 0: return "Today"
     else:
         weeks = round(delta / 7, 1)
@@ -125,45 +123,4 @@ def analyze_tna(file_bytes):
                 ex_fac_raw = row.get(ex_factory_col)
                 ex_fac_str = pd.to_datetime(ex_fac_raw, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ex_fac_raw, errors='coerce')) else '-'
                 
-                qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
-                allocated_qty = qty_val // len(styles_list)
-
-                for single_style in styles_list:
-                    sheet_rows.append({
-                        "Style": single_style,
-                        "Division": str(row.get(div_col, 'N/A')),
-                        "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
-                        "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
-                        "Line Start": str(ls_val),
-                        "Line End": str(le_val),
-                        "Weeks to Line Start": get_weeks_to_line_start(ls_val),
-                        "1st Ex-Factory": ex_fac_str,
-                        "Qty": allocated_qty,
-                        "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
-                    })
-            except: continue
-                
-        if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
-            
-    return all_sheets_data
-
-uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
-
-if uploaded_file is not None:
-    results = analyze_tna(uploaded_file.read())
-    if results:
-        tabs = st.tabs(list(results.keys()))
-        for num, sheet_name in enumerate(results.keys()):
-            with tabs[num]:
-                df_sheet = results[sheet_name]
-                df_disp = df_sheet.copy()
-                df_disp['Qty'] = df_disp['Qty'].apply(lambda x: f"{x:,}")
-                
-                cols = st.columns(5)
-                cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
-                cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                
-                st.dataframe(df_disp, use_container_width=True, hide_index=True)
+                qty_val = int
