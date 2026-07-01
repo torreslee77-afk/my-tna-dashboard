@@ -67,14 +67,15 @@ def analyze_tna(file_bytes):
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
-        style_col, buyer_col = None, None
+        style_col, division_col = None, None
         print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
         line_start_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None
 
         for col in df.columns:
             c_clean = clean_string(col)
             if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
-            elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
+            # 💡 [수정] Buyer 대신 DIVISION을 찾도록 로직 변경
+            elif 'DIVISION' in c_clean or 'DIV' in c_clean: division_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
             elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
@@ -128,7 +129,8 @@ def analyze_tna(file_bytes):
             risk = "🟢 Low"
             if fabric_status == "🔴 Late": risk = "🔴 High"
                 
-            buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip()
+            # 💡 [수정] Buyer 대신 Division 사용
+            div_val = str(row.get(division_col, 'N/A')).strip() if division_col else 'N/A'
             
             ex_fac_val = '-'
             if ex_factory_col:
@@ -150,7 +152,7 @@ def analyze_tna(file_bytes):
                 if i == 0: allocated_qty += qty_val % len(styles_list)
 
                 sheet_rows.append({
-                    "Style": single_style, "Buyer": buyer_val, "Graphic": has_graphic, "Wash": has_wash,
+                    "Style": single_style, "Division": div_val, "Graphic": has_graphic, "Wash": has_wash,
                     "Line Start": line_start.strftime('%m/%d'), "Fabric Status": fabric_status,
                     "PPS Status": pps_status, "1st Ex-Factory": ex_fac_val, "Qty": allocated_qty, "Risk": risk
                 })
@@ -180,7 +182,4 @@ if uploaded_file is not None:
             cols[4].markdown(f'<div class="metric-box"><h4>Wash styles</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
             
             st.write("---")
-            tabs = st.tabs(list(results.keys()))
-            for num, sheet_name in enumerate(results.keys()):
-                with tabs[num]:
-                    st.dataframe(results[sheet_name], use_container_width=True, hide_index=True)
+            tabs = st.tabs(
