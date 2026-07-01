@@ -81,12 +81,10 @@ def analyze_tna(file_bytes):
             elif 'START' in c_clean: line_start_col = col
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
-            
-            # 납기별 수량 영역 내부 매핑
-            if '납기별수량' in c_clean:
-                if 'EXF' in c_clean: ex_factory_col = col
-                elif 'QTY' in c_clean: exf_qty_col = col
-            
+            # 1st EXF Qty 컬럼 매핑
+            elif '1STEXFQTY' in c_clean: exf_qty_col = col
+            # 납기별 수량 영역 매핑
+            elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
             elif any(k in c_clean for k in ['TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         sheet_rows = []
@@ -97,12 +95,11 @@ def analyze_tna(file_bytes):
             ls_date = row.get(line_start_col)
             ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
             
-            # Ex-Factory 날짜
             exf_val = row.get(ex_factory_col)
             exf_date = pd.to_datetime(exf_val, errors='coerce')
             exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
             
-            # 납기별 수량 데이터 추출 (병합된 셀의 첫 번째 값 혹은 개별 값을 안전하게 변환)
+            # 1st EXF Qty 값 추출
             exf_qty_val = row.get(exf_qty_col)
             exf_qty_display = f"{int(float(str(exf_qty_val).replace(',', ''))):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').replace(',','').isdigit() else '-'
             
@@ -157,6 +154,5 @@ if uploaded_file is not None:
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     return styles
 
-                # 화면 표시용 데이터프레임 구성
                 display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
                 st.dataframe(display_df.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
