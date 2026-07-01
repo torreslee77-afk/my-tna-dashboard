@@ -14,14 +14,14 @@ st.markdown("""
 
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 
-# 날짜 계산 함수
+# 날짜 계산 함수 (소수점 1자리 반올림 적용)
 def calculate_weeks(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
         today = datetime(2026, 7, 1)
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
-        return round(delta / 7, 1)
+        return round(delta / 7, 1) 
     except: return None
 
 def clean_string(val):
@@ -91,13 +91,14 @@ def analyze_tna(file_bytes):
             ls_date = row.get(line_start_col)
             ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
             
+            # 요청하신 컬럼 순서대로 딕셔너리 생성
             sheet_rows.append({
                 "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
-                "To LS (Wks)": calculate_weeks(ls_str),
-                "Line Start": ls_str,
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
+                "To LS (Wks)": calculate_weeks(ls_str),
+                "Line Start": ls_str,
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": pd.to_datetime(row.get(ex_factory_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(ex_factory_col), errors='coerce')) else '-',
                 "Qty": int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0,
@@ -124,7 +125,7 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 색상 규칙 (applymap 대신 map 사용)
+                # 색상 규칙 (소수점 1자리 비교)
                 def color_weeks(val):
                     if val is None or val < 0: return 'background-color: #ffcccc' # Red
                     if val <= 2: return 'background-color: #ffcccc' # Red
@@ -133,20 +134,4 @@ if uploaded_file is not None:
 
                 styled_df = df_sheet.style.map(color_weeks, subset=['To LS (Wks)'])
                 
-                st.dataframe(
-                    styled_df, 
-                    use_container_width=True, 
-                    hide_index=True,
-                    column_config={
-                        "Style": st.column_config.TextColumn("Style", width="medium"),
-                        "Division": st.column_config.TextColumn("Division", width="medium"),
-                        "To LS (Wks)": st.column_config.NumberColumn("To LS (Wks)", width="small"),
-                        "Line Start": st.column_config.TextColumn("Line Start", width="small"),
-                        "Graphic": st.column_config.TextColumn("Graphic", width="small"),
-                        "Wash": st.column_config.TextColumn("Wash", width="small"),
-                        "Line End": st.column_config.TextColumn("Line End", width="small"),
-                        "1st Ex-Factory": st.column_config.TextColumn("1st Ex-Factory", width="small"),
-                        "Qty": st.column_config.NumberColumn("Qty", format="%d", width="small"),
-                        "Risk": st.column_config.TextColumn("Risk", width="small"),
-                    }
-                )
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
