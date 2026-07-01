@@ -38,11 +38,8 @@ def analyze_tna(file_bytes):
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
-            has_style = any(k in row_values for k in ['STYLE', 'STYLE', '배정STYLE'])
-            if not has_style:
-                has_style = any(('STYLE' in v or '배정STYLE' in v) for v in row_values if v)
-                
-            if has_style:
+            # STYLE#와 정확하게 매칭되는 열 탐색 기준 강화
+            if 'STYLE' in row_values:
                 header_idx = idx
                 break
                 
@@ -87,7 +84,8 @@ def analyze_tna(file_bytes):
 
         for col in df.columns:
             c_clean = clean_string(col)
-            if any(k in c_clean for k in ['STYLE', 'STYLE', '배정STYLE']): style_col = col
+            # 정확하게 'STYLE'로만 떨어지는 컬럼 매칭 지정
+            if c_clean == 'STYLE': style_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
@@ -103,18 +101,19 @@ def analyze_tna(file_bytes):
         if style_col is None:
             continue
 
-        # [수정]  pandas의 ffill() 기능을 사용하여 원본 데이터프레임 단계에서 안전하게 병합셀 채우기
-        df[style_col] = df[style_col].astype(str).replace('nan', None).ffill()
+        # [수정] 수량 컬럼만 엑셀 병합셀 특성을 고려해 안전하게 전방 채우기(ffill) 적용
         if qty_col:
             df[qty_col] = df[qty_col].replace('nan', None).ffill()
             
         sheet_rows = []
         for _, row in df.iterrows():
             style_raw = str(row.get(style_col, '')).strip()
-            if not style_raw or style_raw == 'None' or style_raw.upper().startswith('TOTAL'):
+            
+            # [수정] 스타일 번호가 진짜 없거나 공백, 혹은 'nan', 'None' 텍스트인 경우 완전히 제외합니다.
+            if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'):
                 continue
                 
-            # 필수 데이터인 Line Start 날짜가 없는 빈 행은 분석 대상에서 제외 (중복 뻥튀기 방지)
+            # 필수 데이터인 Line Start 날짜가 없는 행도 작업 대상에서 필터링
             line_start_raw = row.get(line_start_col) if line_start_col else None
             if pd.isna(line_start_raw) or str(line_start_raw).strip() in ['', 'nan', 'None']: 
                 continue
@@ -161,11 +160,11 @@ def analyze_tna(file_bytes):
                 try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
                 except: ex_fac_val = str(row.get(ex_factory_col))
                 
-            # [수정] 위에서 ffill 처리된 수량을 안전하게 정수형으로 파싱
+            # 위에서 ffill 처리된 수량을 정수형으로 파싱
             qty_val = 0
             if qty_col:
                 qty_raw = str(row.get(qty_col, '0')).replace(',', '').strip()
-                if qty_raw and qty_raw != 'nan' and qty_raw != 'None':
+                if qty_raw and qty_raw.lower() not in ['nan', 'none', '']:
                     try:
                         qty_val = int(float(qty_raw))
                     except:
@@ -178,7 +177,7 @@ def analyze_tna(file_bytes):
 
                 sheet_rows.append({
                     "Style": single_style,
-                    "Buyer": buyer_val if buyer_val != 'nan' and buyer_val != 'None' else 'YAKJIN',
+                    "Buyer": buyer_val if buyer_val.lower() not in ['nan', 'none'] else 'YAKJIN',
                     "Graphic": has_graphic,
                     "Wash": has_wash,
                     "Line Start": line_start.strftime('%m/%d'),
