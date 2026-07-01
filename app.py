@@ -3,6 +3,9 @@ import pandas as pd
 from datetime import datetime, timedelta
 import io
 
+# 오늘 날짜 설정 (2026-07-01 기준)
+TODAY = pd.to_datetime('2026-07-01')
+
 # 1. 페이지 기본 설정 및 디자인
 st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
 
@@ -11,7 +14,6 @@ st.markdown("""
     .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
-    /* 지표 카드 스타일 및 여백 추가 */
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
     </style>
 """, unsafe_allow_html=True)
@@ -25,6 +27,18 @@ def clean_string(val):
         if s_val in ['NAN', 'NONE', '<NA>', 'NAT', 'NULL', '']: return ""
         return s_val.replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
     except: return ""
+
+def get_progress_bar(line_start):
+    """오늘(2026-07-01) 기준 남은 기간을 4등분 이모지로 변환"""
+    if pd.isnull(line_start): return "⬜⬜⬜⬜"
+    delta = (line_start - TODAY).days
+    weeks_left = delta / 7
+    
+    if weeks_left <= 0: return "🟩🟩🟩🟩"   # 투입/임박
+    elif weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
+    elif weeks_left <= 2: return "🟩🟩⬜⬜" # 2주 남음
+    elif weeks_left <= 3: return "🟩⬜⬜⬜" # 3주 남음
+    else: return "⬜⬜⬜⬜"                # 4주 이상
 
 def analyze_tna(file_bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
@@ -67,7 +81,6 @@ def analyze_tna(file_bytes):
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
-        # 컬럼 매핑
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
         fabric_in_fac_col, ex_factory_col, qty_col = None, None, None
 
@@ -109,6 +122,7 @@ def analyze_tna(file_bytes):
                         "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
                         "Line Start": ls_val.strftime('%m/%d') if pd.notnull(ls_val) else '-',
                         "Line End": le_val.strftime('%m/%d') if pd.notnull(le_val) else '-',
+                        "Status": get_progress_bar(ls_val),
                         "1st Ex-Factory": ex_fac_str,
                         "Qty": allocated_qty,
                         "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
@@ -119,7 +133,6 @@ def analyze_tna(file_bytes):
             
     return all_sheets_data
 
-# 파일 업로더
 uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
@@ -139,5 +152,4 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 여백 확보를 위해 st.write 대신 명시적 공간 활용
                 st.dataframe(df_disp, use_container_width=True, hide_index=True)
