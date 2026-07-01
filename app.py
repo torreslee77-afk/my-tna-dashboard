@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 1. 페이지 기본 설정 및 디자인
+# 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
 
 st.markdown("""
@@ -16,7 +16,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
 # 날짜 계산 함수
 def calculate_weeks(ls_val):
@@ -45,7 +44,6 @@ def analyze_tna(file_bytes):
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         if df_raw.empty: continue
         
-        # 이전의 헤더 매핑 로직 유지 (동일)
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
@@ -55,6 +53,7 @@ def analyze_tna(file_bytes):
             
         row0 = df_raw.iloc[header_idx].astype(str).replace('nan', '').str.strip()
         row1 = df_raw.iloc[header_idx + 1].astype(str).replace('nan', '').str.strip() if (header_idx + 1) < len(df_raw) else row0
+        
         combined_columns = []
         current_parent = ""
         for p, s in zip(row0, row1):
@@ -100,7 +99,7 @@ def analyze_tna(file_bytes):
             sheet_rows.append({
                 "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
-                "Weeks to Line Start": calculate_weeks(ls_str), # 이동
+                "Weeks to Line Start": calculate_weeks(ls_str),
                 "Line Start": ls_str,
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
@@ -112,8 +111,7 @@ def analyze_tna(file_bytes):
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
 
-# 메인 UI
-uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
+uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     results = analyze_tna(uploaded_file.read())
@@ -123,7 +121,15 @@ if uploaded_file is not None:
             with tabs[num]:
                 df_sheet = results[sheet_name]
                 
-                # 컬럼 설정 및 넓이 조정
+                # 요약 박스 (복구)
+                cols = st.columns(5)
+                cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
+                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
+                cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                
+                # 데이터 프레임 출력 (컬럼 너비 설정)
                 st.dataframe(
                     df_sheet, 
                     use_container_width=True, 
