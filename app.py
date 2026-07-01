@@ -11,7 +11,8 @@ st.markdown("""
     .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
-    .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; }
+    /* 지표 카드 스타일 및 여백 추가 */
+    .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -91,7 +92,6 @@ def analyze_tna(file_bytes):
             
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            # 날짜 파싱 및 안전한 처리
             try:
                 ls_val = pd.to_datetime(row.get(line_start_col), errors='coerce')
                 le_val = pd.to_datetime(row.get(line_end_col), errors='coerce')
@@ -138,4 +138,6 @@ if uploaded_file is not None:
                 cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_sheet["Qty"].sum():,}</h2></div>', unsafe_allow_html=True)
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                
+                # 여백 확보를 위해 st.write 대신 명시적 공간 활용
                 st.dataframe(df_disp, use_container_width=True, hide_index=True)
