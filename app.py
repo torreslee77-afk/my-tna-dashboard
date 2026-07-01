@@ -38,7 +38,6 @@ def analyze_tna(file_bytes):
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
-            # 컬럼 감지 누락을 막기 위해 'STYLE' 단어가 포함되어 있으면 헤더 행으로 인정
             if any('STYLE' in v for v in row_values if v):
                 header_idx = idx
                 break
@@ -84,7 +83,6 @@ def analyze_tna(file_bytes):
 
         for col in df.columns:
             c_clean = clean_string(col)
-            # [수정] 정확 매칭 실패를 방지하기 위해 'STYLE'을 포함하는 열을 스타일 열로 지정하되, 배정STYLE 등은 배제하도록 조건 최적화
             if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
             elif 'PRINT' in c_clean: print_col = col
@@ -96,12 +94,12 @@ def analyze_tna(file_bytes):
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
-            elif c_clean == 'TOTALORDERQTY': qty_col = col
+            # [핵심 수정] 여기서 GMT QTY를 확실하게 잡도록 변경했습니다.
+            elif 'GMTQTY' in c_clean or c_clean == 'TOTALORDERQTY': qty_col = col
 
         if style_col is None:
             continue
 
-        # 수량 컬럼만 엑셀 병합셀 특성을 고려해 안전하게 전방 채우기(ffill) 적용
         if qty_col:
             df[qty_col] = df[qty_col].replace('nan', None).ffill()
             
@@ -109,11 +107,9 @@ def analyze_tna(file_bytes):
         for _, row in df.iterrows():
             style_raw = str(row.get(style_col, '')).strip()
             
-            # 스타일 번호가 진짜 없거나 공백, 혹은 'nan', 'None' 텍스트인 경우 완전히 제외
             if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'):
                 continue
                 
-            # 필수 데이터인 Line Start 날짜가 없는 행도 작업 대상에서 필터링
             line_start_raw = row.get(line_start_col) if line_start_col else None
             if pd.isna(line_start_raw) or str(line_start_raw).strip() in ['', 'nan', 'None']: 
                 continue
@@ -160,7 +156,6 @@ def analyze_tna(file_bytes):
                 try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
                 except: ex_fac_val = str(row.get(ex_factory_col))
                 
-            # 위에서 ffill 처리된 수량을 정수형으로 파싱
             qty_val = 0
             if qty_col:
                 qty_raw = str(row.get(qty_col, '0')).replace(',', '').strip()
@@ -194,7 +189,6 @@ def analyze_tna(file_bytes):
             
     return all_sheets_data
 
-# 3. UI - 파일 업로드 섹션
 uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
