@@ -24,12 +24,22 @@ def analyze_tna(file_bytes):
     
     for sheet_name in xls.sheet_names:
         df = pd.read_excel(xls, sheet_name=sheet_name)
-        if df.empty or 'Style' not in df.columns:
+        if df.empty:
+            continue
+            
+        # 'Style' 또는 'Style#' 컬럼 유연하게 찾기
+        style_col = None
+        for col in df.columns:
+            if str(col).strip() in ['Style', 'Style#']:
+                style_col = col
+                break
+                
+        if style_col is None:
             continue
             
         sheet_rows = []
         for _, row in df.iterrows():
-            style = str(row.get('Style', '')).strip()
+            style = str(row.get(style_col, '')).strip()
             if not style or style == 'nan':
                 continue
                 
@@ -98,7 +108,7 @@ if uploaded_file is not None:
             results = analyze_tna(file_bytes)
             
             if not results:
-                st.error("분석할 수 있는 데이터나 'Style' 컬럼을 찾지 못했습니다.")
+                st.error("분석할 수 있는 데이터나 'Style' 또는 'Style#' 컬럼을 찾지 못했습니다.")
             else:
                 # 상단 요약 대시보드 계산
                 total_styles = sum(len(df) for df in results.values())
