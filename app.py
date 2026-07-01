@@ -14,7 +14,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# [수정] 메인 제목과 서브 제목 반영
+# 메인 제목 및 서브 제목 설정
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary</div>', unsafe_allow_html=True)
 
@@ -81,7 +81,7 @@ def analyze_tna(file_bytes):
         df.columns = final_columns
 
         # --- 매칭 타겟 컬럼 인덱스 찾기 ---
-        style_col, buyer_col, factory_col = None, None, None
+        style_col, buyer_col = None, None
         print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
         line_start_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None
 
@@ -89,7 +89,6 @@ def analyze_tna(file_bytes):
             c_clean = clean_string(col)
             if any(k in c_clean for k in ['STYLE', 'STYLE', '배정STYLE']): style_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
-            elif 'FACTORY' in c_clean: factory_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
             elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
@@ -99,7 +98,8 @@ def analyze_tna(file_bytes):
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
-            elif any(k in c_clean for k in ['TOTALORDERQTY', 'ORDERQTY', 'QTY', 'ORDER', '수량', 'PCS']): qty_col = col
+            # [수정] 오직 'TOTAL ORDER Q'TY' (정제 시 TOTALORDERQTY) 하나만 완벽하게 매칭하도록 제한
+            elif c_clean == 'TOTALORDERQTY': qty_col = col
 
         if style_col is None:
             continue
