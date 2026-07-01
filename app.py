@@ -8,8 +8,8 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 1. 상단 빈 공간 제거 */
-    .block-container { padding-top: 1rem; }
+    /* 상단 제목이 잘 보이도록 여백을 3rem으로 수정 */
+    .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; }
@@ -74,7 +74,6 @@ def analyze_tna(file_bytes):
         for col in df.columns:
             c_clean = clean_string(col)
             if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
-            # 2. Division 컬럼 매핑
             elif any(k in c_clean for k in ['DIVISION', 'DIV']): div_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
@@ -186,7 +185,6 @@ if uploaded_file is not None:
             graphic_cnt = sum(len(df[df['Graphic'] == "🟢 O"]) for df in results.values())
             wash_cnt = sum(len(df[df['Wash'] == "🟢 O"]) for df in results.values())
             
-            # 3. 5열 Summary 및 명칭 변경
             cols = st.columns(5)
             cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
             cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{high_risks}</h2></div>', unsafe_allow_html=True)
@@ -199,6 +197,5 @@ if uploaded_file is not None:
             for num, sheet_name in enumerate(results.keys()):
                 with tabs[num]:
                     df_disp = results[sheet_name].copy()
-                    # 4. Qty 콤마 적용
                     df_disp['Qty'] = df_disp['Qty'].apply(lambda x: f"{x:,}")
                     st.dataframe(df_disp, use_container_width=True, hide_index=True)
