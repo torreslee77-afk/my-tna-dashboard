@@ -128,15 +128,19 @@ uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", typ
 if uploaded_file is not None:
     results = analyze_tna(uploaded_file.read())
     if results:
-        tabs = st.tabs(list(results.keys()))
-        for num, sheet_name in enumerate(results.keys()):
+        # 통합 데이터 생성
+        all_df = pd.concat(results.values(), ignore_index=True)
+        tab_names = ["All Summary"] + list(results.keys())
+        tabs = st.tabs(tab_names)
+        
+        # 탭별 렌더링 로직
+        for num, tab_name in enumerate(tab_names):
             with tabs[num]:
-                df_sheet = results[sheet_name]
+                df_sheet = all_df if tab_name == "All Summary" else results[tab_name]
                 
                 df_calc = df_sheet.copy()
                 df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
                 
-                # 순서 변경: TTL Styles - TTL Qty - Key/High Risk - Wash - Graphic
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
                 cols[1].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
