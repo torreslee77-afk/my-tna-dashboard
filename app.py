@@ -8,7 +8,6 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 상단 여백을 기존 3rem에서 1.5rem으로 줄임 */
     .block-container { padding-top: 1.5rem; }
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
     .main-title { font-size: 3em; font-weight: bold; color: #1E3A8A; margin-bottom: 25px; }
@@ -71,7 +70,7 @@ def analyze_tna(file_bytes):
         df.columns = unique_columns
 
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
-        fabric_in_fac_col, ex_factory_col, exf_qty_col, qty_col = None, None, None, None
+        ex_factory_col, exf_qty_col, qty_col, risk_col = None, None, None, None
 
         for col in df.columns:
             c_clean = clean_string(col)
@@ -81,10 +80,10 @@ def analyze_tna(file_bytes):
             elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
             elif 'START' in c_clean: line_start_col = col
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
-            elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif '1STEXFQTY' in c_clean: exf_qty_col = col
             elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
             elif any(k in c_clean for k in ['TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
+            elif 'KEY' in c_clean and 'RISK' in c_clean: risk_col = col
 
         sheet_rows = []
         for _, row in df.iterrows():
@@ -103,6 +102,9 @@ def analyze_tna(file_bytes):
             
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
+            # Risk 컬럼 데이터 추출
+            risk_val = str(row.get(risk_col, 'N/A')).strip().upper()
+            
             sheet_rows.append({
                 "Division": str(row.get(div_col, 'N/A')),
                 "Style": style_raw,
@@ -114,7 +116,7 @@ def analyze_tna(file_bytes):
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": exf_str,
                 "1st Ex-Qty": exf_qty_display,
-                "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
+                "Risk": risk_val
             })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
@@ -129,32 +131,35 @@ if uploaded_file is not None:
             with tabs[num]:
                 df_sheet = results[sheet_name]
                 
-                # 계산용 데이터 생성 (Qty 컬럼 문자열에서 콤마 제거)
                 df_calc = df_sheet.copy()
                 df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
                 
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"] == "🔴 High"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
                 cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
                 def color_rows(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                    # 1. To LS(Wks) 컬러링
                     for i, row in df.iterrows():
                         val = row['To LS (Wks)']
-                        if val == "In Production":
-                            color = '#d3d3d3'
+                        if val == "In Production": color = '#d3d3d3'
                         else:
                             try:
                                 v = float(val)
                                 if v <= 2: color = '#ffcccc'
                                 elif v <= 4: color = '#ffe6cc'
                                 else: color = '#d4edda'
-                            except:
-                                color = '#ffffff'
+                            except: color = '#ffffff'
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
+                    
+                    # 2. Risk 컬러링
+                    for i, row in df.iterrows():
+                        if row['Risk'] in ['KEY', 'HIGH RISK']:
+                            styles.loc[i, 'Risk'] = 'background-color: #ffcccc; color: red; font-weight: bold;'
                     return styles
 
                 st.dataframe(df_sheet.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
