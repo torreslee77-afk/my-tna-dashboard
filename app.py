@@ -8,7 +8,6 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 상단 제목이 잘 보이도록 여백 확보 */
     .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
@@ -17,7 +16,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-title">TNA Analysis summary</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
 def clean_string(val):
     try:
@@ -101,7 +100,6 @@ def analyze_tna(file_bytes):
                 
             line_start_raw = row.get(line_start_col)
             line_end_raw = row.get(line_end_col)
-            
             if str(line_start_raw).strip().lower() in ['', 'nan', 'none', 'nat', '<na>']: continue
             try: 
                 line_start = pd.to_datetime(line_start_raw)
@@ -127,54 +125,25 @@ def analyze_tna(file_bytes):
             fabric_in_fac = str(row.get(fabric_in_fac_col, 'nan')).strip().lower()
             fabric_status = "🔴 Late" if fabric_in_fac in ['nan', 'none', 'nat', '<na>', ''] else "🟢 Ready"
             
-            pp_appd_raw = str(row.get(pps_appd_col, '')).strip() if pps_appd_col else ""
-            if pp_appd_raw.upper() in ['N/A']: pps_status = "⚪ N/A"
-            elif pp_appd_raw.upper() in ['C/O']: pps_status = "⚪ C/O"
-            elif pp_appd_raw.lower() in ['nan', 'none', '']: pps_status = "➖"
-            else:
-                try: pps_status = pd.to_datetime(pp_appd_raw).strftime('%m/%d')
-                except: pps_status = pp_appd_raw
-                
             risk = "🟢 Low"
             if fabric_status == "🔴 Late": risk = "🔴 High"
                 
             div_val = str(row.get(div_col, 'N/A')).strip() if div_col else 'N/A'
-            if div_val.lower() in ['nan', 'none', '']: div_val = 'N/A'
-            
-            ex_fac_val = '-'
-            if ex_factory_col:
-                ex_raw = row.get(ex_factory_col)
-                if str(ex_raw).strip().lower() not in ['nan', 'none', 'nat', '<na>', '']:
-                    try: ex_fac_val = pd.to_datetime(ex_raw).strftime('%m/%d')
-                    except: ex_fac_val = str(ex_raw)
             
             qty_val = 0
             if qty_col:
                 raw_val = row.get(qty_col)
                 clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
-                if clean_qty_str.lower() not in ['nan', 'none', '<na>', '']:
-                    try: qty_val = int(float(clean_qty_str))
-                    except: qty_val = 0
+                try: qty_val = int(float(clean_qty_str))
+                except: qty_val = 0
                 
-            for i, single_style in enumerate(styles_list):
-                allocated_qty = qty_val // len(styles_list)
-                if i == 0: allocated_qty += qty_val % len(styles_list)
-
+            for single_style in styles_list:
                 sheet_rows.append({
-                    "Style": single_style,
-                    "Division": div_val,
-                    "Graphic": has_graphic,
-                    "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m/%d'),
-                    "Line End": line_end.strftime('%m/%d') if line_end else '-',
-                    "Fabric Status": fabric_status,
-                    "PPS Status": pps_status,
-                    "1st Ex-Factory": ex_fac_val,
-                    "Qty": allocated_qty,
-                    "Risk": risk
+                    "Style": single_style, "Division": div_val, "Graphic": has_graphic, "Wash": has_wash,
+                    "Line Start": line_start.strftime('%m/%d'), "Line End": line_end.strftime('%m/%d') if line_end else '-',
+                    "Fabric Status": fabric_status, "Qty": qty_val, "Risk": risk
                 })
-        if sheet_rows:
-            all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
+        if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
     return all_sheets_data
 
@@ -185,23 +154,26 @@ if uploaded_file is not None:
         results = analyze_tna(uploaded_file.read())
         if not results: st.error("데이터 분석 실패")
         else:
-            total_styles = sum(len(df) for df in results.values())
-            high_risks = sum(len(df[df['Risk'] == "🔴 High"]) for df in results.values())
-            total_qty = sum(df['Qty'].sum() for df in results.values())
-            graphic_cnt = sum(len(df[df['Graphic'] == "🟢 O"]) for df in results.values())
-            wash_cnt = sum(len(df[df['Wash'] == "🟢 O"]) for df in results.values())
-            
-            cols = st.columns(5)
-            cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
-            cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{high_risks}</h2></div>', unsafe_allow_html=True)
-            cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{total_qty:,}</h2></div>', unsafe_allow_html=True)
-            cols[3].markdown(f'<div class="metric-box"><h4>Graphic styles</h4><h2>{graphic_cnt}</h2></div>', unsafe_allow_html=True)
-            cols[4].markdown(f'<div class="metric-box"><h4>Wash styles</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
-            
-            st.write("---")
             tabs = st.tabs(list(results.keys()))
             for num, sheet_name in enumerate(results.keys()):
                 with tabs[num]:
-                    df_disp = results[sheet_name].copy()
+                    df_sheet = results[sheet_name]
+                    # 시트별 요약 계산
+                    total_styles = len(df_sheet)
+                    high_risks = len(df_sheet[df_sheet['Risk'] == "🔴 High"])
+                    total_qty = df_sheet['Qty'].sum()
+                    graphic_cnt = len(df_sheet[df_sheet['Graphic'] == "🟢 O"])
+                    wash_cnt = len(df_sheet[df_sheet['Wash'] == "🟢 O"])
+                    
+                    # 시트별 요약 출력
+                    cols = st.columns(5)
+                    cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{total_styles}</h2></div>', unsafe_allow_html=True)
+                    cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{high_risks}</h2></div>', unsafe_allow_html=True)
+                    cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{total_qty:,}</h2></div>', unsafe_allow_html=True)
+                    cols[3].markdown(f'<div class="metric-box"><h4>Graphic styles</h4><h2>{graphic_cnt}</h2></div>', unsafe_allow_html=True)
+                    cols[4].markdown(f'<div class="metric-box"><h4>Wash styles</h4><h2>{wash_cnt}</h2></div>', unsafe_allow_html=True)
+                    
+                    st.write("---")
+                    df_disp = df_sheet.copy()
                     df_disp['Qty'] = df_disp['Qty'].apply(lambda x: f"{x:,}")
                     st.dataframe(df_disp, use_container_width=True, hide_index=True)
