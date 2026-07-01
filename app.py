@@ -17,7 +17,6 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary</div>', unsafe_allow_html=True)
 
-# 💡 [수정 1] clean_string 함수에 엑셀 줄바꿈(\n, \r) 문자 제거 로직 추가
 def clean_string(val):
     if pd.isna(val): return ""
     return str(val).strip().upper().replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
@@ -70,14 +69,14 @@ def analyze_tna(file_bytes):
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
-            # 💡 [수정 2] 수량 컬럼 매칭 조건 포괄적 확대
             elif any(k in c_clean for k in ['GMTQTY', 'TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         if style_col is None: continue
 
-        # 💡 [수정 3] 빈 값 처리(ffill) 강화 (문자열 'None', 빈문자열 등을 모두 실제 None으로 치환 후 ffill 적용)
+        # 💡 [오류 수정 부분] 리스트 대신 딕셔너리를 사용하여 에러 없이 None 치환 후 ffill() 수행
         if qty_col:
-            df[qty_col] = df[qty_col].astype(str).replace(['nan', 'NaN', 'None', '', ' '], None).ffill()
+            df[qty_col] = df[qty_col].astype(str).str.strip().replace({'nan': None, 'NaN': None, 'None': None, '': None, ' ': None})
+            df[qty_col] = df[qty_col].ffill()
             
         sheet_rows = []
         for _, row in df.iterrows():
@@ -126,16 +125,17 @@ def analyze_tna(file_bytes):
                 try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
                 except: ex_fac_val = str(row.get(ex_factory_col))
             
+            # 💡 [수량 파싱 예외 처리 강화] 안정적으로 숫자로 변환합니다.
             qty_val = 0
             if qty_col:
                 raw_val = row.get(qty_col)
-                try: 
-                    # 💡 [수정 4] 수량 텍스트 안정적 형변환 처리
-                    clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
-                    if clean_qty_str not in ['nan', 'None', '']:
-                        qty_val = int(float(clean_qty_str))
-                except: 
-                    qty_val = 0
+                if pd.notna(raw_val):
+                    try: 
+                        clean_qty_str = str(raw_val).replace(',', '').replace('pcs', '').replace('PCS', '').strip()
+                        if clean_qty_str not in ['nan', 'None', '']:
+                            qty_val = int(float(clean_qty_str))
+                    except: 
+                        qty_val = 0
                 
             for i, single_style in enumerate(styles_list):
                 allocated_qty = qty_val // len(styles_list)
@@ -160,7 +160,7 @@ def analyze_tna(file_bytes):
             
     return all_sheets_data
 
-uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls", "csv"])
+uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
     with st.spinner("분석 중..."):
