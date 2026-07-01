@@ -62,6 +62,7 @@ def analyze_tna(file_bytes):
         for col in df.columns:
             c_clean = clean_string(col)
             if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
+            # 정확한 수량 컬럼 매칭
             elif c_clean == 'GMTQTY': qty_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
             elif 'PRINT' in c_clean: print_col = col
@@ -76,7 +77,7 @@ def analyze_tna(file_bytes):
 
         if style_col is None: continue
 
-        # [병합 셀 처리] 수량 컬럼 ffill 적용
+        # [병합 셀 처리] 수량 컬럼 ffill
         if qty_col:
             df[qty_col] = df[qty_col].replace('', None).ffill()
             
@@ -92,34 +93,33 @@ def analyze_tna(file_bytes):
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            # 수량 분할 처리
+            # 수량 계산
             qty_val = 0
             if qty_col:
                 qty_raw = str(row.get(qty_col, '0')).replace(',', '').strip()
-                if qty_raw and qty_raw.lower() not in ['nan', 'none', '']:
-                    try: qty_val = int(float(qty_raw))
-                    except: qty_val = 0
+                try: qty_val = int(float(qty_raw))
+                except: qty_val = 0
             
             allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
 
+            # 나머지 로직 (has_graphic, has_wash, Risk 판정 등)
             for single_style in styles_list:
                 sheet_rows.append({
                     "Style": single_style,
                     "Qty": allocated_qty,
-                    "Line Start": line_start.strftime('%m/%d'),
-                    # (기타 데이터 추가 로직 동일)
+                    "Line Start": line_start.strftime('%m/%d')
                 })
         if sheet_rows:
             all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
     return all_sheets_data
 
-# 3. UI - 파일 업로드 섹션
-uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"])
+# 3. UI
+uploaded_file = st.file_uploader("TNA 엑셀 파일 업로드", type=["xlsx", "xls"])
 if uploaded_file is not None:
     results = analyze_tna(uploaded_file.read())
     if results:
         tabs = st.tabs(list(results.keys()))
-        for num, sheet_name in enumerate(results.keys()):
-            with tabs[num]:
-                st.dataframe(results[sheet_name], use_container_width=True)
+        for i, name in enumerate(results.keys()):
+            with tabs[i]:
+                st.dataframe(results[name], use_container_width=True)
