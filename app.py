@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import io
 
 # 1. 페이지 기본 설정 및 디자인
-st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
+st.set_page_config(page_title="MENS ACTIVE TNA SUMMARY", page_icon="📊", layout="wide")
 
 st.markdown("""
     <style>
@@ -14,7 +14,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
+# [수정] 메인 제목을 MENS ACTIVE TNA SUMMARY로 변경
+st.markdown('<div class="main-title">📊 MENS ACTIVE TNA SUMMARY</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
 
 # Helper: 대소문자, 공백, 특수문자 제거 후 키워드 매칭
@@ -109,25 +110,24 @@ def analyze_tna(file_bytes):
             if not style_raw or style_raw == 'nan' or style_raw.upper().startswith('TOTAL'):
                 continue
                 
-            # [핵심 수정] 콤마(,), 슬래시(/) 등으로 묶인 스타일 번호들을 각각의 개별 스타일로 쪼갬
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            # Graphic / Wash 자동 판정
-            has_graphic = 'X'
-            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x']: has_graphic = 'O'
-            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x']: has_graphic = 'O'
+            # [수정] Graphic / Wash 동그라미는 초록색 이모지, 엑스는 빨간색 이모지로 변경
+            has_graphic = '🔴 X'
+            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
+            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
                 
-            has_wash = 'X'
-            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
-            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
-            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
+            has_wash = '🔴 X'
+            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
+            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
+            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
             
             line_start_raw = row.get(line_start_col) if line_start_col else None
             if pd.isna(line_start_raw): continue
             try: line_start = pd.to_datetime(line_start_raw)
             except: continue
             
-            days_buffer = 14 if (has_graphic == 'O' or has_wash == 'O') else 7
+            days_buffer = 14 if ('🟢 O' in has_graphic or '🟢 O' in has_wash) else 7
             fabric_due = line_start - timedelta(days=14)
             fpp_due = line_start - timedelta(days=14)
             pps_due = line_start - timedelta(days=days_buffer)
@@ -147,7 +147,6 @@ def analyze_tna(file_bytes):
             if fabric_status == "🔴 Late": risk = "🔴 High"
                 
             buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip() if buyer_col else 'YAKJIN'
-            factory_val = str(row.get(factory_col, 'YV')).strip() if factory_col else 'YV'
             
             ex_fac_val = '-'
             if ex_factory_col and pd.notna(row.get(ex_factory_col)):
@@ -160,22 +159,18 @@ def analyze_tna(file_bytes):
             except:
                 qty_val = 0
                 
-            # 여러 개로 분리된 스타일에 대해 각각 행을 추가하되, 수량(Qty)은 스타일 개수로 균등 분할하거나 첫 번째 행에 배정
-            # 여기서는 스타일 번호마다 동일한 공정 정보를 복사하여 독립된 행으로 생성합니다.
             for i, single_style in enumerate(styles_list):
-                # 묶여있던 수량을 스타일 개수만큼 n분의 1 처리 (정수로 나눔)
                 allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
-                # 나누어 떨어지지 않는 나머지는 첫 번째 스타일에 몰아줌
                 if i == 0 and len(styles_list) > 0:
                     allocated_qty += qty_val % len(styles_list)
 
+                # [수정] 차트 구성 항목에서 'Factory' 제거
                 sheet_rows.append({
                     "Style": single_style,
                     "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
-                    "Factory": factory_val if factory_val != 'nan' else 'YV',
                     "Graphic": has_graphic,
                     "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m/%d'),
+                    "Line Start": line_start.strftime('%m('%m/%d'),
                     "Fabric Due": fabric_due.strftime('%m/%d'),
                     "Fabric Status": fabric_status,
                     "FPP Due": fpp_due.strftime('%m/%d'),
