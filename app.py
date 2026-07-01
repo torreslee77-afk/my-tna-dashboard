@@ -139,10 +139,17 @@ if uploaded_file is not None:
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
                     for i, row in df.iterrows():
                         val = row['To LS (Wks)']
-                        if val == "In Production": color = '#d3d3d3'
+                        if val == "In Production":
+                            color = '#d3d3d3'
                         else:
                             try:
                                 v = float(val)
                                 if v <= 2: color = '#ffcccc'
                                 elif v <= 4: color = '#ffe6cc'
                                 else: color = '#d4edda'
+                            except:
+                                color = '#ffffff'
+                        styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
+                    return styles
+
+                st.dataframe(df_sheet.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
