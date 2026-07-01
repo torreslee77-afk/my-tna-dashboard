@@ -98,7 +98,6 @@ def analyze_tna(file_bytes):
             ls_date = row.get(line_start_col)
             ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
             
-            # 수량을 숫자로 계산하되, 데이터프레임 표시용으로 저장
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
             sheet_rows.append({
@@ -110,8 +109,8 @@ def analyze_tna(file_bytes):
                 "Line Start": ls_str,
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": pd.to_datetime(row.get(ex_factory_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(ex_factory_col), errors='coerce')) else '-',
-                "Qty": qty_val, # 연산용
-                "Qty_Display": f"{qty_val:,}", # 화면 표시용 (콤마 적용)
+                "Qty": qty_val,
+                "Qty_Display": f"{qty_val:,}",
                 "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
             })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
@@ -140,7 +139,7 @@ if uploaded_file is not None:
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
                     for i, row in df.iterrows():
                         val = row['To LS (Wks)']
-                        if val == "In Production": color = '#ffcccc'
+                        if val == "In Production": color = '#d3d3d3' # 회색으로 변경
                         else:
                             try:
                                 v = float(val)
@@ -151,7 +150,6 @@ if uploaded_file is not None:
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     return styles
 
-                # 화면 표시를 위해 Qty_Display 컬럼을 사용하고 Qty(숫자)는 숨김
                 display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
                 
                 st.dataframe(
