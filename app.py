@@ -17,18 +17,11 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
 
-# Helper: 복잡한 엑셀 컬럼명에서 특정 키워드를 스마트하게 매칭하는 함수
-def find_column(df_columns, primary_keywords, secondary_keyword=None):
-    for col in df_columns:
-        col_str = str(col).strip().upper().replace(" ", "").replace("'", "").replace("#", "")
-        match_primary = any(p_kw.upper() in col_str for p_kw in primary_keywords)
-        if match_primary:
-            if secondary_keyword:
-                if secondary_keyword.upper() in col_str:
-                    return col
-            else:
-                return col
-    return None
+# Helper: 대소문자, 공백, 특수문자 제거 후 키워드 매칭
+def clean_string(val):
+    if pd.isna(val):
+        return ""
+    return str(val).strip().upper().replace(" ", "").replace("'", "").replace("#", "").replace("/", "")
 
 # 2. 엑셀 분석 엔진 함수
 def analyze_tna(file_bytes):
@@ -36,22 +29,33 @@ def analyze_tna(file_bytes):
     all_sheets_data = {}
     
     for sheet_name in xls.sheet_names:
-        # .xls 파일 구조적 특성을 고려하여 1, 2행을 로우 데이터로 먼저 읽음
+        # 헤더 없이 모든 데이터를 통째로 읽어옴
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
-        if df_raw.empty or len(df_raw) < 2:
+        if df_raw.empty:
             continue
             
-        # 1행(대분류)과 2행(소분류)을 깨끗하게 병합하여 단일 헤더 만들기
-        row0 = df_raw.iloc[0].astype(str).replace('nan', '').str.strip()
-        row1 = df_raw.iloc[1].astype(str).replace('nan', '').str.strip()
+        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 ---
+        header_idx = None
+        for idx, row in df_raw.iterrows():
+            row_values = [clean_string(v) for v in row.values]
+            # 병합된 셀 때문에 'STYLE', 'STYLE#', '배정STYLE'이 포함되어 있는지 확인
+            if any(k in row_values for k in ['STYLE', 'STYLE#', '배정STYLE']):
+                header_idx = idx
+                break
+                
+        if header_idx is None:
+            continue  # STYLE#을 못 찾은 시트는 패스
+            
+        # 제목 줄과 그 다음 줄을 결합하여 복잡한 2중 헤더 처리
+        row0 = df_raw.iloc[header_idx].astype(str).replace('nan', '').str.strip()
+        row1 = df_raw.iloc[header_idx + 1].astype(str).replace('nan', '').str.strip() if (header_idx + 1) < len(df_raw) else row0
         
         combined_columns = []
         current_parent = ""
         for p, s in zip(row0, row1):
             if p != "":
                 current_parent = p
-            
-            if current_parent and s:
+            if current_parent and s and p != s:
                 combined_columns.append(f"{current_parent} {s}")
             elif s:
                 combined_columns.append(s)
@@ -60,26 +64,31 @@ def analyze_tna(file_bytes):
             else:
                 combined_columns.append("Unnamed")
                 
-        # 헤더 아래 진짜 데이터만 분리
-        df = df_raw.iloc[2:].copy()
+        # 진짜 데이터 부분만 잘라내기
+        df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = combined_columns
 
-        # --- 약진 명세서 기준 컬럼 매칭 ---
-        style_col = find_column(df.columns, ['STYLE', 'STYLE#', '배정STYLE'])
-        buyer_col = find_column(df.columns, ['BUYER', 'DIVISION', '담당'])
-        factory_col = find_column(df.columns, ['FACTORY'])
-        
-        print_col = find_column(df.columns, ['PRINT'])
-        emb_col = find_column(df.columns, ['EMB', 'SEQUIN'])
-        fwash_col = find_column(df.columns, ['FWASH', 'F/WASH'])
-        gwash_col = find_column(df.columns, ['GWASH', 'G/WASH'])
-        gdye_col = find_column(df.columns, ['GDYE', 'G/DYE'])
-        
-        line_start_col = find_column(df.columns, ['START'], 'LINE') or find_column(df.columns, ['START'])
-        fabric_in_fac_col = find_column(df.columns, ['INFAC'], 'FABRIC') or find_column(df.columns, ['INFAC'])
-        pps_appd_col = find_column(df.columns, ['APPD'], 'PP') or find_column(df.columns, ['PP'])
-        ex_factory_col = find_column(df.columns, ['1STS/D', 'EXF', 'SD', 'EXF'])
-        qty_col = find_column(df.columns, ['TOTALORDERQTY', 'QTY'])
+        # --- 매칭 타겟 컬럼 인덱스 찾기 ---
+        style_col, buyer_col, factory_col = None, None, None
+        print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
+        line_start_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None
+
+        for col in df.columns:
+            c_clean = clean_string(col)
+            # 'STYLE' 키워드가 컬럼명에 포함되어 있는지 느슨하게 검사 (병합 컬럼 대응)
+            if any(k in c_clean for k in ['STYLE', 'STYLE#', '배정STYLE']): style_col = col
+            elif c_clean in ['BUYER', 'DIVISION', '담당']: buyer_col = col
+            elif c_clean == 'FACTORY': factory_col = col
+            elif 'PRINT' in c_clean: print_col = col
+            elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
+            elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
+            elif 'GWASH' in c_clean or 'G/WASH' in c_clean: gwash_col = col
+            elif 'GDYE' in c_clean or 'G/DYE' in c_clean: gdye_col = col
+            elif 'START' in c_clean: line_start_col = col
+            elif 'INFAC' in c_clean: fabric_in_fac_col = col
+            elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
+            elif c_clean in ['1STS/D', 'EXF', 'SD', '1STSD']: ex_factory_col = col
+            elif c_clean in ['TOTALORDERQTY', 'QTY']: qty_col = col
 
         if style_col is None:
             continue
@@ -92,28 +101,20 @@ def analyze_tna(file_bytes):
                 
             # Graphic / Wash 자동 판정
             has_graphic = 'X'
-            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x']:
-                has_graphic = 'O'
-            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x']:
-                has_graphic = 'O'
+            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x']: has_graphic = 'O'
+            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x']: has_graphic = 'O'
                 
             has_wash = 'X'
-            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x']:
-                has_wash = 'O'
-            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x']:
-                has_wash = 'O'
-            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x']:
-                has_wash = 'O'
+            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
+            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
+            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
             
+            # 날짜 파싱 안전장치
             line_start_raw = row.get(line_start_col) if line_start_col else None
-            if pd.isna(line_start_raw):
-                continue
-            try:
-                line_start = pd.to_datetime(line_start_raw)
-            except:
-                continue
+            if pd.isna(line_start_raw): continue
+            try: line_start = pd.to_datetime(line_start_raw)
+            except: continue
             
-            # 워시/그래픽 여부에 따른 버퍼 룰 적용
             days_buffer = 14 if (has_graphic == 'O' or has_wash == 'O') else 7
             fabric_due = line_start - timedelta(days=14)
             fpp_due = line_start - timedelta(days=14)
@@ -123,19 +124,15 @@ def analyze_tna(file_bytes):
             fabric_status = "🔴 Late" if pd.isna(fabric_in_fac) else "🟢 Ready"
             
             pp_appd_raw = str(row.get(pps_appd_col, '')).strip() if pps_appd_col else ""
-            if pp_appd_raw.upper() in ['N/A']:
-                pps_status = "⚪ N/A"
-            elif pp_appd_raw.upper() in ['C/O']:
-                pps_status = "⚪ C/O"
-            elif pp_appd_raw == 'nan' or not pp_appd_raw:
-                pps_status = "➖"
+            if pp_appd_raw.upper() in ['N/A']: pps_status = "⚪ N/A"
+            elif pp_appd_raw.upper() in ['C/O']: pps_status = "⚪ C/O"
+            elif pp_appd_raw == 'nan' or not pp_appd_raw: pps_status = "➖"
             else:
                 try: pps_status = pd.to_datetime(pp_appd_raw).strftime('%m/%d')
                 except: pps_status = pp_appd_raw
                 
             risk = "🟢 Low"
-            if fabric_status == "🔴 Late":
-                risk = "🔴 High"
+            if fabric_status == "🔴 Late": risk = "🔴 High"
                 
             buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip() if buyer_col else 'YAKJIN'
             factory_val = str(row.get(factory_col, 'YV')).strip() if factory_col else 'YV'
