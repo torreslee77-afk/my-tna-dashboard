@@ -21,7 +21,7 @@ st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀
 def clean_string(val):
     if pd.isna(val):
         return ""
-    return str(val).strip().upper().replace(" ", "").replace("'", "").replace("#", "").replace("/", "")
+    return str(val).strip().upper().replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "")
 
 # 2. 엑셀 분석 엔진 함수
 def analyze_tna(file_bytes):
@@ -29,12 +29,11 @@ def analyze_tna(file_bytes):
     all_sheets_data = {}
     
     for sheet_name in xls.sheet_names:
-        # 헤더 없이 모든 데이터를 통째로 읽어옴
         df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         if df_raw.empty:
             continue
             
-        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 ---
+        # --- STYLE# 제목 행 찾기 ---
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
@@ -47,9 +46,8 @@ def analyze_tna(file_bytes):
                 break
                 
         if header_idx is None:
-            continue  # STYLE#을 못 찾은 시트는 패스
+            continue
             
-        # 제목 줄과 그 다음 줄을 결합하여 복잡한 2중 헤더 처리
         row0 = df_raw.iloc[header_idx].astype(str).replace('nan', '').str.strip()
         row1 = df_raw.iloc[header_idx + 1].astype(str).replace('nan', '').str.strip() if (header_idx + 1) < len(df_raw) else row0
         
@@ -67,7 +65,7 @@ def analyze_tna(file_bytes):
             else:
                 combined_columns.append("Unnamed")
                 
-        # --- [오류 해결 핵심] 동일 이름 컬럼 고유화 (Series 에러 방지) ---
+        # 컬럼 고유화
         final_columns = []
         counts = {}
         for col in combined_columns:
@@ -78,7 +76,6 @@ def analyze_tna(file_bytes):
                 counts[col] += 1
                 final_columns.append(f"{col}_{counts[col]}")
                 
-        # 진짜 데이터 부분만 잘라내고 고유화된 컬럼명 부여
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = final_columns
 
@@ -100,18 +97,21 @@ def analyze_tna(file_bytes):
             elif 'START' in c_clean: line_start_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
-            elif c_clean in ['1STS/D', 'EXF', 'SD', '1STSD']: ex_factory_col = col
-            elif c_clean in ['TOTALORDERQTY', 'QTY']: qty_col = col
+            elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
+            elif any(k in c_clean for k in ['TOTALORDERQTY', 'ORDERQTY', 'QTY', 'ORDER', '수량', 'PCS']): qty_col = col
 
         if style_col is None:
             continue
             
         sheet_rows = []
         for _, row in df.iterrows():
-            style = str(row.get(style_col, '')).strip()
-            if not style or style == 'nan' or style.upper().startswith('TOTAL'):
+            style_raw = str(row.get(style_col, '')).strip()
+            if not style_raw or style_raw == 'nan' or style_raw.upper().startswith('TOTAL'):
                 continue
                 
+            # [핵심 수정] 콤마(,), 슬래시(/) 등으로 묶인 스타일 번호들을 각각의 개별 스타일로 쪼갬
+            styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
+            
             # Graphic / Wash 자동 판정
             has_graphic = 'X'
             if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x']: has_graphic = 'O'
@@ -122,7 +122,6 @@ def analyze_tna(file_bytes):
             elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
             elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x']: has_wash = 'O'
             
-            # 날짜 파싱 안전장치
             line_start_raw = row.get(line_start_col) if line_start_col else None
             if pd.isna(line_start_raw): continue
             try: line_start = pd.to_datetime(line_start_raw)
@@ -149,29 +148,42 @@ def analyze_tna(file_bytes):
                 
             buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip() if buyer_col else 'YAKJIN'
             factory_val = str(row.get(factory_col, 'YV')).strip() if factory_col else 'YV'
+            
             ex_fac_val = '-'
             if ex_factory_col and pd.notna(row.get(ex_factory_col)):
                 try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
                 except: ex_fac_val = str(row.get(ex_factory_col))
                 
-            try: qty_val = int(row.get(qty_col, 0)) if qty_col and pd.notna(row.get(qty_col)) else 0
-            except: qty_val = 0
+            try:
+                qty_raw = str(row.get(qty_col, '0')).replace(',', '').strip()
+                qty_val = int(float(qty_raw)) if qty_raw and qty_raw != 'nan' else 0
+            except:
+                qty_val = 0
                 
-            sheet_rows.append({
-                "Style": style,
-                "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
-                "Factory": factory_val if factory_val != 'nan' else 'YV',
-                "Graphic": has_graphic,
-                "Wash": has_wash,
-                "Line Start": line_start.strftime('%m/%d'),
-                "Fabric Due": fabric_due.strftime('%m/%d'),
-                "Fabric Status": fabric_status,
-                "FPP Due": fpp_due.strftime('%m/%d'),
-                "PPS Status": pps_status,
-                "1st Ex-Factory": ex_fac_val,
-                "Qty": qty_val,
-                "Risk": risk
-            })
+            # 여러 개로 분리된 스타일에 대해 각각 행을 추가하되, 수량(Qty)은 스타일 개수로 균등 분할하거나 첫 번째 행에 배정
+            # 여기서는 스타일 번호마다 동일한 공정 정보를 복사하여 독립된 행으로 생성합니다.
+            for i, single_style in enumerate(styles_list):
+                # 묶여있던 수량을 스타일 개수만큼 n분의 1 처리 (정수로 나눔)
+                allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
+                # 나누어 떨어지지 않는 나머지는 첫 번째 스타일에 몰아줌
+                if i == 0 and len(styles_list) > 0:
+                    allocated_qty += qty_val % len(styles_list)
+
+                sheet_rows.append({
+                    "Style": single_style,
+                    "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
+                    "Factory": factory_val if factory_val != 'nan' else 'YV',
+                    "Graphic": has_graphic,
+                    "Wash": has_wash,
+                    "Line Start": line_start.strftime('%m/%d'),
+                    "Fabric Due": fabric_due.strftime('%m/%d'),
+                    "Fabric Status": fabric_status,
+                    "FPP Due": fpp_due.strftime('%m/%d'),
+                    "PPS Status": pps_status,
+                    "1st Ex-Factory": ex_fac_val,
+                    "Qty": allocated_qty,
+                    "Risk": risk
+                })
         if sheet_rows:
             all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
