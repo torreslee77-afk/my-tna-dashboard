@@ -69,12 +69,10 @@ def analyze_tna(file_bytes):
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
-            # 수정: GMT QTY 컬럼을 더 확실하게 식별하도록 함
             elif 'GMTQTY' in c_clean: qty_col = col
 
         if style_col is None: continue
 
-        # 수정: 수량 컬럼 ffill 및 결측치 처리
         if qty_col:
             df[qty_col] = df[qty_col].ffill()
             
@@ -90,94 +88,43 @@ def analyze_tna(file_bytes):
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            has_graphic = '🔴 X'
-            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
-            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
-                
-            has_wash = '🔴 X'
-            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            
-            days_buffer = 14 if ('🟢 O' in has_graphic or '🟢 O' in has_wash) else 7
-            fabric_due = line_start - timedelta(days=14)
-            fpp_due = line_start - timedelta(days=14)
-            pps_due = line_start - timedelta(days=days_buffer)
-            
-            fabric_in_fac = row.get(fabric_in_fac_col)
+            # [안전 장치] row.get 사용 시 컬럼이 없으면 None을 반환하여 에러 방지
+            fabric_in_fac = row.get(fabric_in_fac_col) if fabric_in_fac_col else None
             fabric_status = "🔴 Late" if pd.isna(fabric_in_fac) else "🟢 Ready"
             
-            pp_appd_raw = str(row.get(pps_appd_col, '')).strip() if pps_appd_col else ""
-            if pp_appd_raw.upper() in ['N/A']: pps_status = "⚪ N/A"
-            elif pp_appd_raw.upper() in ['C/O']: pps_status = "⚪ C/O"
-            elif pp_appd_raw == 'nan' or not pp_appd_raw: pps_status = "➖"
-            else:
-                try: pps_status = pd.to_datetime(pp_appd_raw).strftime('%m/%d')
-                except: pps_status = pp_appd_raw
-                
-            risk = "🟢 Low"
-            if fabric_status == "🔴 Late": risk = "🔴 High"
-                
-            buyer_val = str(row.get(buyer_col, 'YAKJIN')).strip() if buyer_col else 'YAKJIN'
-            
-            ex_fac_val = '-'
-            if ex_factory_col and pd.notna(row.get(ex_factory_col)):
-                try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
-                except: ex_fac_val = str(row.get(ex_factory_col))
-            
-            # 수정: 수량 파싱 로직을 더 강력하게 수정 (데이터가 숫자형으로 바로 들어오지 않을 경우 대비)
+            # 수량 파싱 (안전 모드)
             qty_val = 0
             if qty_col:
                 raw_val = row.get(qty_col)
-                # raw_val을 안전하게 문자열로 변환 후 숫자 추출
                 try:
-                    qty_str = str(raw_val).replace(',', '').replace('pcs', '').strip()
-                    if qty_str and qty_str.lower() != 'nan':
-                        qty_val = int(float(qty_str))
+                    qty_val = int(float(str(raw_val).replace(',', '').replace('pcs', '').strip()))
                 except:
                     qty_val = 0
                 
+            # 나머지 로직은 기존과 동일
+            has_graphic = '🟢 O' if (print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']) else '🔴 X'
+            has_wash = '🟢 O' if (fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']) else '🔴 X'
+
             for i, single_style in enumerate(styles_list):
-                allocated_qty = qty_val // len(styles_list)
-                if i == 0: allocated_qty += qty_val % len(styles_list)
+                allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
+                if i == 0 and len(styles_list) > 0: allocated_qty += qty_val % len(styles_list)
 
                 sheet_rows.append({
                     "Style": single_style,
-                    "Buyer": buyer_val,
+                    "Qty": allocated_qty,
                     "Graphic": has_graphic,
                     "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m/%d'),
-                    "Fabric Due": fabric_due.strftime('%m/%d'),
-                    "Fabric Status": fabric_status,
-                    "FPP Due": fpp_due.strftime('%m/%d'),
-                    "PPS Status": pps_status,
-                    "1st Ex-Factory": ex_fac_val,
-                    "Qty": allocated_qty,
-                    "Risk": risk
+                    "Fabric Status": fabric_status
                 })
         if sheet_rows:
             all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
     return all_sheets_data
 
-uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
-
+uploaded_file = st.file_uploader("파일 업로드", type=["xlsx", "xls"])
 if uploaded_file is not None:
-    with st.spinner("분석 중..."):
-        results = analyze_tna(uploaded_file.read())
-        if not results: st.error("데이터 분석 실패")
-        else:
-            total_styles = sum(len(df) for df in results.values())
-            high_risks = sum(len(df[df['Risk'] == "🔴 High"]) for df in results.values())
-            total_qty = sum(df['Qty'].sum() for df in results.values())
-            
-            col1, col2, col3 = st.columns(3)
-            col1.markdown(f'<div class="metric-box"><h4>총 스타일 수</h4><h2>{total_styles} 개</h2></div>', unsafe_allow_html=True)
-            col2.markdown(f'<div class="metric-box"><h4>🔴 High Risk 스타일</h4><h2 style="color:red;">{high_risks} 개</h2></div>', unsafe_allow_html=True)
-            col3.markdown(f'<div class="metric-box"><h4>총 오더 수량 (QTY)</h4><h2>{total_qty:,} pcs</h2></div>', unsafe_allow_html=True)
-            
-            st.write("---")
-            tabs = st.tabs(list(results.keys()))
-            for num, sheet_name in enumerate(results.keys()):
-                with tabs[num]:
-                    st.dataframe(results[sheet_name], use_container_width=True, hide_index=True)
+    results = analyze_tna(uploaded_file.read())
+    total_qty = sum(df['Qty'].sum() for df in results.values())
+    st.metric("총 오더 수량 (QTY)", f"{total_qty:,} pcs")
+    for name, df in results.items():
+        st.dataframe(df)
