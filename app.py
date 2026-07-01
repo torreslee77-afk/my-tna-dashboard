@@ -34,12 +34,19 @@ def analyze_tna(file_bytes):
         if df_raw.empty:
             continue
             
-        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 ---
+        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 (에러 수정 버전) ---
         header_idx = None
         for idx, row in df_raw.iterrows():
+            # 각 행의 값을 안전하게 문자열 리스트로 변환
             row_values = [clean_string(v) for v in row.values]
-            # 병합된 셀 때문에 'STYLE', 'STYLE#', '배정STYLE'이 포함되어 있는지 확인
-            if any(k in row_values for k in ['STYLE', 'STYLE#', '배정STYLE']):
+            
+            # 리스트 내에 STYLE 관련 키워드가 하나라도 정확히 포함되어 있는지 검사
+            has_style = any(k in row_values for k in ['STYLE', 'STYLE', '배정STYLE'])
+            # 혹은 컬럼명 중 글자 내에 STYLE이 포함되어 있는지 느슨하게 검사
+            if not has_style:
+                has_style = any(('STYLE' in v or '배정STYLE' in v) for v in row_values if v)
+                
+            if has_style:
                 header_idx = idx
                 break
                 
@@ -75,10 +82,10 @@ def analyze_tna(file_bytes):
 
         for col in df.columns:
             c_clean = clean_string(col)
-            # 'STYLE' 키워드가 컬럼명에 포함되어 있는지 느슨하게 검사 (병합 컬럼 대응)
-            if any(k in c_clean for k in ['STYLE', 'STYLE#', '배정STYLE']): style_col = col
-            elif c_clean in ['BUYER', 'DIVISION', '담당']: buyer_col = col
-            elif c_clean == 'FACTORY': factory_col = col
+            # 병합 컬럼 대응을 위해 포함 여부로 매칭
+            if any(k in c_clean for k in ['STYLE', 'STYLE', '배정STYLE']): style_col = col
+            elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
+            elif 'FACTORY' in c_clean: factory_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
             elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
