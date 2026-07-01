@@ -100,8 +100,14 @@ def analyze_tna(file_bytes):
         if style_col is None:
             continue
 
-        if qty_col:
-            df[qty_col] = df[qty_col].replace('nan', None).ffill()
+if qty_col:
+    # row.get(qty_col)이 숫자가 아닌 문자열이나 다른 형태일 수 있음을 고려
+    raw_val = row.get(qty_col)
+    try:
+        # 콤마 제거 및 공백 제거 후 float으로 변환, 다시 int로 변환
+        qty_val = int(float(str(raw_val).replace(',', '').strip()))
+    except (ValueError, TypeError):
+        qty_val = 0
             
         sheet_rows = []
         for _, row in df.iterrows():
