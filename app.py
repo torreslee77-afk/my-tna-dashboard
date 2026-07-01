@@ -8,7 +8,7 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    /* 상단 제목이 잘 보이도록 여백을 3rem으로 수정 */
+    /* 상단 제목이 잘 보이도록 여백 확보 */
     .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
@@ -69,7 +69,7 @@ def analyze_tna(file_bytes):
 
         style_col, div_col = None, None
         print_col, emb_col, fwash_col, gwash_col, gdye_col = None, None, None, None, None
-        line_start_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None
+        line_start_col, line_end_col, fabric_in_fac_col, pps_appd_col, ex_factory_col, qty_col = None, None, None, None, None, None
 
         for col in df.columns:
             c_clean = clean_string(col)
@@ -81,6 +81,7 @@ def analyze_tna(file_bytes):
             elif 'GWASH' in c_clean or 'G/WASH' in c_clean: gwash_col = col
             elif 'GDYE' in c_clean or 'G/DYE' in c_clean: gdye_col = col
             elif 'START' in c_clean: line_start_col = col
+            elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
             elif 'PPGTSAPPD' in c_clean or 'PPAPPD' in c_clean: pps_appd_col = col
             elif any(k in c_clean for k in ['1STSD', 'EXFAC', 'EXFACTORY', '1STEX', 'SD', 'S/D', 'FACTORYOUT', 'EXFACTORYDATE']): ex_factory_col = col
@@ -99,8 +100,12 @@ def analyze_tna(file_bytes):
             if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'): continue
                 
             line_start_raw = row.get(line_start_col)
+            line_end_raw = row.get(line_end_col)
+            
             if str(line_start_raw).strip().lower() in ['', 'nan', 'none', 'nat', '<na>']: continue
-            try: line_start = pd.to_datetime(line_start_raw)
+            try: 
+                line_start = pd.to_datetime(line_start_raw)
+                line_end = pd.to_datetime(line_end_raw) if pd.notnull(line_end_raw) else None
             except: continue
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
@@ -161,6 +166,7 @@ def analyze_tna(file_bytes):
                     "Graphic": has_graphic,
                     "Wash": has_wash,
                     "Line Start": line_start.strftime('%m/%d'),
+                    "Line End": line_end.strftime('%m/%d') if line_end else '-',
                     "Fabric Status": fabric_status,
                     "PPS Status": pps_status,
                     "1st Ex-Factory": ex_fac_val,
