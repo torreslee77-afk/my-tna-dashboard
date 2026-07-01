@@ -14,7 +14,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 요청하신 이름으로 제목 수정
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
 
@@ -28,10 +27,11 @@ def analyze_tna(file_bytes):
         if df.empty:
             continue
             
-        # 'Style' 또는 'Style#' 컬럼 유연하게 찾기
+        # 대소문자 공백 상관없이 Style / Style# / STYLE# 컬럼 유연하게 찾기
         style_col = None
         for col in df.columns:
-            if str(col).strip() in ['Style', 'Style#']:
+            clean_col = str(col).strip().upper()  # 대문자로 통일해서 비교
+            if clean_col in ['STYLE', 'STYLE#']:
                 style_col = col
                 break
                 
@@ -109,7 +109,7 @@ if uploaded_file is not None:
             results = analyze_tna(file_bytes)
             
             if not results:
-                st.error("분석할 수 있는 데이터나 'Style' 또는 'Style#' 컬럼을 찾지 못했습니다.")
+                st.error("분석할 수 있는 데이터나 'STYLE' 또는 'STYLE#' 컬럼을 찾지 못했습니다.")
             else:
                 # 상단 요약 대시보드 계산
                 total_styles = sum(len(df) for df in results.values())
