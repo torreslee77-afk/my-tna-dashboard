@@ -34,15 +34,11 @@ def analyze_tna(file_bytes):
         if df_raw.empty:
             continue
             
-        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 (에러 수정 버전) ---
+        # --- [핵심] 병합된 셀을 고려하여 STYLE# 제목 행 찾기 ---
         header_idx = None
         for idx, row in df_raw.iterrows():
-            # 각 행의 값을 안전하게 문자열 리스트로 변환
             row_values = [clean_string(v) for v in row.values]
-            
-            # 리스트 내에 STYLE 관련 키워드가 하나라도 정확히 포함되어 있는지 검사
             has_style = any(k in row_values for k in ['STYLE', 'STYLE', '배정STYLE'])
-            # 혹은 컬럼명 중 글자 내에 STYLE이 포함되어 있는지 느슨하게 검사
             if not has_style:
                 has_style = any(('STYLE' in v or '배정STYLE' in v) for v in row_values if v)
                 
@@ -71,9 +67,20 @@ def analyze_tna(file_bytes):
             else:
                 combined_columns.append("Unnamed")
                 
-        # 진짜 데이터 부분만 잘라내기
+        # --- [오류 해결 핵심] 동일 이름 컬럼 고유화 (Series 에러 방지) ---
+        final_columns = []
+        counts = {}
+        for col in combined_columns:
+            if col not in counts:
+                counts[col] = 1
+                final_columns.append(col)
+            else:
+                counts[col] += 1
+                final_columns.append(f"{col}_{counts[col]}")
+                
+        # 진짜 데이터 부분만 잘라내고 고유화된 컬럼명 부여
         df = df_raw.iloc[header_idx + 2:].copy()
-        df.columns = combined_columns
+        df.columns = final_columns
 
         # --- 매칭 타겟 컬럼 인덱스 찾기 ---
         style_col, buyer_col, factory_col = None, None, None
@@ -82,7 +89,6 @@ def analyze_tna(file_bytes):
 
         for col in df.columns:
             c_clean = clean_string(col)
-            # 병합 컬럼 대응을 위해 포함 여부로 매칭
             if any(k in c_clean for k in ['STYLE', 'STYLE', '배정STYLE']): style_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
             elif 'FACTORY' in c_clean: factory_col = col
