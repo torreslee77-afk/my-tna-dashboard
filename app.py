@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import io
 
 # 1. 페이지 기본 설정 및 디자인
-st.set_page_config(page_title="TNA AI Dashboard", page_icon="📊", layout="wide")
+st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
 
 st.markdown("""
     <style>
@@ -14,7 +14,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-title">📊 TNA AI Operational Dashboard</div>', unsafe_allow_html=True)
+# 요청하신 이름으로 제목 수정
+st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">엑셀 TNA 파일을 업로드하면 각 팀별 신호등 현황과 리스크를 자동으로 분석합니다.</div>', unsafe_allow_html=True)
 
 # 2. 엑셀 분석 엔진 함수
