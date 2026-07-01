@@ -8,9 +8,6 @@ st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="
 
 st.markdown("""
     <style>
-    .block-container { padding-top: 3rem; }
-    .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
-    .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
     </style>
 """, unsafe_allow_html=True)
@@ -19,12 +16,11 @@ st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</d
 
 # 날짜 계산 함수
 def calculate_weeks(ls_val):
-    if pd.isnull(ls_val) or ls_val == '-': return None # 색상 처리를 위해 None 반환
+    if pd.isnull(ls_val) or ls_val == '-': return None
     try:
         today = datetime(2026, 7, 1)
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
-        if delta < 0: return -1 # 생산 중/경과
         return round(delta / 7, 1)
     except: return None
 
@@ -128,15 +124,17 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 데이터 프레임 출력 (색상 규칙 적용)
+                # 색상 규칙 (applymap 대신 map 사용)
                 def color_weeks(val):
-                    if val is None or val == -1: return 'background-color: #ffcccc' # Red (경과)
+                    if val is None or val < 0: return 'background-color: #ffcccc' # Red
                     if val <= 2: return 'background-color: #ffcccc' # Red
                     if val <= 4: return 'background-color: #ffe6cc' # Orange
                     return 'background-color: #d4edda' # Green
 
+                styled_df = df_sheet.style.map(color_weeks, subset=['To LS (Wks)'])
+                
                 st.dataframe(
-                    df_sheet.style.applymap(color_weeks, subset=['To LS (Wks)']),
+                    styled_df, 
                     use_container_width=True, 
                     hide_index=True,
                     column_config={
