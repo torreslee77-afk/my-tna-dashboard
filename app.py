@@ -103,21 +103,25 @@ def analyze_tna(file_bytes):
         if style_col is None:
             continue
 
-        # [수정] 병합된 스타일과 수량 처리를 위해 전방 채우기(Forward Fill) 임시 변수 정의
-        last_seen_style = ""
-        last_seen_qty = 0
+        # [수정]  pandas의 ffill() 기능을 사용하여 원본 데이터프레임 단계에서 안전하게 병합셀 채우기
+        df[style_col] = df[style_col].astype(str).replace('nan', None).ffill()
+        if qty_col:
+            df[qty_col] = df[qty_col].replace('nan', None).ffill()
             
         sheet_rows = []
         for _, row in df.iterrows():
             style_raw = str(row.get(style_col, '')).strip()
-            
-            # 스타일 컬럼이 비어있거나 nan이면 이전 행의 스타일(병합된 상태)을 유지
-            if not style_raw or style_raw == 'nan':
-                style_raw = last_seen_style
-            else:
-                last_seen_style = style_raw
+            if not style_raw or style_raw == 'None' or style_raw.upper().startswith('TOTAL'):
+                continue
                 
-            if not style_raw or style_raw.upper().startswith('TOTAL'):
+            # 필수 데이터인 Line Start 날짜가 없는 빈 행은 분석 대상에서 제외 (중복 뻥튀기 방지)
+            line_start_raw = row.get(line_start_col) if line_start_col else None
+            if pd.isna(line_start_raw) or str(line_start_raw).strip() in ['', 'nan', 'None']: 
+                continue
+                
+            try: 
+                line_start = pd.to_datetime(line_start_raw)
+            except: 
                 continue
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
@@ -130,11 +134,6 @@ def analyze_tna(file_bytes):
             if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
             elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
             elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            
-            line_start_raw = row.get(line_start_col) if line_start_col else None
-            if pd.isna(line_start_raw): continue
-            try: line_start = pd.to_datetime(line_start_raw)
-            except: continue
             
             days_buffer = 14 if ('🟢 O' in has_graphic or '🟢 O' in has_wash) else 7
             fabric_due = line_start - timedelta(days=14)
@@ -162,16 +161,15 @@ def analyze_tna(file_bytes):
                 try: ex_fac_val = pd.to_datetime(row.get(ex_factory_col)).strftime('%m/%d')
                 except: ex_fac_val = str(row.get(ex_factory_col))
                 
-            # [수정] 수량 셀이 병합된 경우(NaN) 직전 유효했던 수량 데이터를 바인딩
-            qty_raw = str(row.get(qty_col, '')).replace(',', '').strip() if qty_col else ""
-            if qty_raw and qty_raw != 'nan':
-                try:
-                    qty_val = int(float(qty_raw))
-                    last_seen_qty = qty_val  # 새로운 수량이 발견되면 기억
-                except:
-                    qty_val = last_seen_qty
-            else:
-                qty_val = last_seen_qty  # 비어있으면 기억해둔 병합 수량 적용
+            # [수정] 위에서 ffill 처리된 수량을 안전하게 정수형으로 파싱
+            qty_val = 0
+            if qty_col:
+                qty_raw = str(row.get(qty_col, '0')).replace(',', '').strip()
+                if qty_raw and qty_raw != 'nan' and qty_raw != 'None':
+                    try:
+                        qty_val = int(float(qty_raw))
+                    except:
+                        qty_val = 0
                 
             for i, single_style in enumerate(styles_list):
                 allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
@@ -180,7 +178,7 @@ def analyze_tna(file_bytes):
 
                 sheet_rows.append({
                     "Style": single_style,
-                    "Buyer": buyer_val if buyer_val != 'nan' else 'YAKJIN',
+                    "Buyer": buyer_val if buyer_val != 'nan' and buyer_val != 'None' else 'YAKJIN',
                     "Graphic": has_graphic,
                     "Wash": has_wash,
                     "Line Start": line_start.strftime('%m/%d'),
