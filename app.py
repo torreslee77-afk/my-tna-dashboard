@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 업로드하는 시점의 오늘 날짜 (2026년 7월 1일)
+# 업로드하는 시점의 오늘 날짜 (2026-07-01)
 TODAY = pd.to_datetime('2026-07-01')
 
 # 1. 페이지 기본 설정 및 디자인
@@ -25,9 +25,7 @@ def parse_date(date_val):
     """날짜 파싱 시 연도를 2026년으로 고정"""
     if pd.isnull(date_val): return None
     try:
-        # 문자열인 경우 처리
         s = str(date_val).strip()
-        # MM/DD 형식일 경우 2026년 붙임
         dt = pd.to_datetime(s, format='%m/%d', errors='ignore')
         if dt.year == 1900: 
             dt = dt.replace(year=2026)
@@ -35,23 +33,18 @@ def parse_date(date_val):
     except:
         return pd.to_datetime(date_val, errors='coerce')
 
-def get_progress_bar(line_start):
-    """날짜 비교 로직: 오늘(2026-07-01) 기준 남은 주차 계산"""
-    if pd.isnull(line_start): return "⬜⬜⬜⬜"
+def get_weeks_to_line_start(line_start):
+    """남은 기간을 숫자로 표시 (예: 2.5 weeks)"""
+    if pd.isnull(line_start): return "-"
     
     ls = parse_date(line_start)
     delta = (ls - TODAY).days
     
-    # 투입 예정일이 오늘 이전이면 경과
-    if delta < 0: return "🔴 경과"
-    elif delta == 0: return "🟩🟩🟩🟩 (금일)"
-    
-    # 4주 기준으로 계산
-    weeks_left = delta / 7
-    if weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
-    elif weeks_left <= 2: return "🟩🟩⬜⬜" # 2주 남음
-    elif weeks_left <= 3: return "🟩⬜⬜⬜" # 3주 남음
-    else: return "⬜⬜⬜⬜ (4주+)"         # 4주 이상
+    if delta < 0: return "Passed"
+    elif delta == 0: return "Today"
+    else:
+        weeks = round(delta / 7, 1)
+        return f"{weeks} weeks"
 
 def clean_string(val):
     try:
@@ -143,7 +136,7 @@ def analyze_tna(file_bytes):
                         "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
                         "Line Start": str(ls_val),
                         "Line End": str(le_val),
-                        "Weeks to Line Start": get_progress_bar(ls_val), # 제목 변경
+                        "Weeks to Line Start": get_weeks_to_line_start(ls_val),
                         "1st Ex-Factory": ex_fac_str,
                         "Qty": allocated_qty,
                         "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
