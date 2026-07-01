@@ -38,8 +38,8 @@ def analyze_tna(file_bytes):
         header_idx = None
         for idx, row in df_raw.iterrows():
             row_values = [clean_string(v) for v in row.values]
-            # STYLE#와 정확하게 매칭되는 열 탐색 기준 강화
-            if 'STYLE' in row_values:
+            # 컬럼 감지 누락을 막기 위해 'STYLE' 단어가 포함되어 있으면 헤더 행으로 인정
+            if any('STYLE' in v for v in row_values if v):
                 header_idx = idx
                 break
                 
@@ -84,8 +84,8 @@ def analyze_tna(file_bytes):
 
         for col in df.columns:
             c_clean = clean_string(col)
-            # 정확하게 'STYLE'로만 떨어지는 컬럼 매칭 지정
-            if c_clean == 'STYLE': style_col = col
+            # [수정] 정확 매칭 실패를 방지하기 위해 'STYLE'을 포함하는 열을 스타일 열로 지정하되, 배정STYLE 등은 배제하도록 조건 최적화
+            if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
             elif any(k in c_clean for k in ['BUYER', 'DIVISION', '담당']): buyer_col = col
             elif 'PRINT' in c_clean: print_col = col
             elif 'EMB' in c_clean or 'SEQUIN' in c_clean: emb_col = col
@@ -101,7 +101,7 @@ def analyze_tna(file_bytes):
         if style_col is None:
             continue
 
-        # [수정] 수량 컬럼만 엑셀 병합셀 특성을 고려해 안전하게 전방 채우기(ffill) 적용
+        # 수량 컬럼만 엑셀 병합셀 특성을 고려해 안전하게 전방 채우기(ffill) 적용
         if qty_col:
             df[qty_col] = df[qty_col].replace('nan', None).ffill()
             
@@ -109,7 +109,7 @@ def analyze_tna(file_bytes):
         for _, row in df.iterrows():
             style_raw = str(row.get(style_col, '')).strip()
             
-            # [수정] 스타일 번호가 진짜 없거나 공백, 혹은 'nan', 'None' 텍스트인 경우 완전히 제외합니다.
+            # 스타일 번호가 진짜 없거나 공백, 혹은 'nan', 'None' 텍스트인 경우 완전히 제외
             if not style_raw or style_raw.lower() in ['nan', 'none', ''] or style_raw.upper().startswith('TOTAL'):
                 continue
                 
