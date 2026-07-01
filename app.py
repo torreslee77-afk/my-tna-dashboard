@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import io
 
 # 1. 페이지 기본 설정 및 디자인
@@ -11,13 +11,26 @@ st.markdown("""
     .block-container { padding-top: 3rem; }
     .main-title { font-size: 32px; font-weight: bold; color: #1E3A8A; margin-bottom: 5px; }
     .sub-title { font-size: 16px; color: #6B7280; margin-bottom: 25px; }
-    /* 지표 카드 스타일 및 여백 추가 */
     .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
+
+# 날짜 계산 함수 추가
+def calculate_weeks(ls_val):
+    if pd.isnull(ls_val) or ls_val == '-': return "N/A"
+    try:
+        # 오늘 날짜 2026-07-01
+        today = datetime(2026, 7, 1)
+        # ls_val이 문자열 'MM/DD' 형식이면 2026년 붙여서 변환
+        target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
+        delta = (target_date - today).days
+        if delta < 0: return "Under Production"
+        if delta == 0: return "Today"
+        return f"{round(delta / 7, 1)} weeks"
+    except: return "N/A"
 
 def clean_string(val):
     try:
@@ -93,8 +106,12 @@ def analyze_tna(file_bytes):
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
             try:
-                ls_val = pd.to_datetime(row.get(line_start_col), errors='coerce')
-                le_val = pd.to_datetime(row.get(line_end_col), errors='coerce')
+                ls_date = row.get(line_start_col)
+                ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
+                
+                le_date = row.get(line_end_col)
+                le_str = pd.to_datetime(le_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(le_date, errors='coerce')) else '-'
+                
                 ex_fac_raw = row.get(ex_factory_col)
                 ex_fac_str = pd.to_datetime(ex_fac_raw, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ex_fac_raw, errors='coerce')) else '-'
                 
@@ -107,8 +124,9 @@ def analyze_tna(file_bytes):
                         "Division": str(row.get(div_col, 'N/A')),
                         "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                         "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
-                        "Line Start": ls_val.strftime('%m/%d') if pd.notnull(ls_val) else '-',
-                        "Line End": le_val.strftime('%m/%d') if pd.notnull(le_val) else '-',
+                        "Line Start": ls_str,
+                        "Weeks to Line Start": calculate_weeks(ls_str),
+                        "Line End": le_str,
                         "1st Ex-Factory": ex_fac_str,
                         "Qty": allocated_qty,
                         "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
@@ -116,10 +134,9 @@ def analyze_tna(file_bytes):
             except: continue
                 
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
-            
     return all_sheets_data
 
-# 파일 업로더
+# 파일 업로더 및 UI
 uploaded_file = st.file_uploader("TNA 엑셀 파일을 여기에 드래그하거나 선택하세요.", type=["xlsx", "xls"])
 
 if uploaded_file is not None:
@@ -139,5 +156,4 @@ if uploaded_file is not None:
                 cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
-                # 여백 확보를 위해 st.write 대신 명시적 공간 활용
                 st.dataframe(df_disp, use_container_width=True, hide_index=True)
