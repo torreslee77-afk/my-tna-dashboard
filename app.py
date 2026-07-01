@@ -81,9 +81,7 @@ def analyze_tna(file_bytes):
             elif 'START' in c_clean: line_start_col = col
             elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
             elif 'INFAC' in c_clean: fabric_in_fac_col = col
-            # 1st EXF Qty 컬럼 매핑
             elif '1STEXFQTY' in c_clean: exf_qty_col = col
-            # 납기별 수량 영역 매핑
             elif '납기별수량' in c_clean and 'EXF' in c_clean: ex_factory_col = col
             elif any(k in c_clean for k in ['TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
@@ -99,15 +97,15 @@ def analyze_tna(file_bytes):
             exf_date = pd.to_datetime(exf_val, errors='coerce')
             exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
             
-            # 1st EXF Qty 값 추출
             exf_qty_val = row.get(exf_qty_col)
             exf_qty_display = f"{int(float(str(exf_qty_val).replace(',', ''))):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').replace(',','').isdigit() else '-'
             
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
             sheet_rows.append({
-                "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
+                "Style": style_raw,
+                "Qty": qty_val,
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
                 "To LS (Wks)": get_weeks_display(ls_str),
@@ -115,8 +113,6 @@ def analyze_tna(file_bytes):
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": exf_str,
                 "1st Ex-Qty": exf_qty_display,
-                "Qty": qty_val,
-                "Qty_Display": f"{qty_val:,}",
                 "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
             })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
@@ -150,9 +146,3 @@ if uploaded_file is not None:
                                 if v <= 2: color = '#ffcccc'
                                 elif v <= 4: color = '#ffe6cc'
                                 else: color = '#d4edda'
-                            except: color = '#ffffff'
-                        styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
-                    return styles
-
-                display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
-                st.dataframe(display_df.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
