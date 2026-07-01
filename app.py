@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 업로드하는 시점의 오늘 날짜로 자동 설정
-TODAY = pd.to_datetime(datetime.now().date())
+# 업로드하는 시점의 오늘 날짜 (2026년 7월 1일)
+TODAY = pd.to_datetime('2026-07-01')
 
 # 1. 페이지 기본 설정 및 디자인
 st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
@@ -21,21 +21,37 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
+def parse_date(date_val):
+    """날짜 파싱 시 연도를 2026년으로 고정"""
+    if pd.isnull(date_val): return None
+    try:
+        # 문자열인 경우 처리
+        s = str(date_val).strip()
+        # MM/DD 형식일 경우 2026년 붙임
+        dt = pd.to_datetime(s, format='%m/%d', errors='ignore')
+        if dt.year == 1900: 
+            dt = dt.replace(year=2026)
+        return dt
+    except:
+        return pd.to_datetime(date_val, errors='coerce')
+
 def get_progress_bar(line_start):
-    """업로드 당일 기준 남은 기간 시각화"""
+    """날짜 비교 로직: 오늘(2026-07-01) 기준 남은 주차 계산"""
     if pd.isnull(line_start): return "⬜⬜⬜⬜"
     
-    delta = (line_start - TODAY).days
-    weeks_left = delta / 7
+    ls = parse_date(line_start)
+    delta = (ls - TODAY).days
     
-    # 1. 기한이 지났거나 오늘인 경우
-    if delta < 0: return "🔴 기한 경과"
-    elif delta == 0: return "🟩🟩🟩🟩 (금일 투입)"
-    # 2. 미래의 경우
-    elif weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
+    # 투입 예정일이 오늘 이전이면 경과
+    if delta < 0: return "🔴 경과"
+    elif delta == 0: return "🟩🟩🟩🟩 (금일)"
+    
+    # 4주 기준으로 계산
+    weeks_left = delta / 7
+    if weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
     elif weeks_left <= 2: return "🟩🟩⬜⬜" # 2주 남음
     elif weeks_left <= 3: return "🟩⬜⬜⬜" # 3주 남음
-    else: return "⬜⬜⬜⬜"                # 4주 이상
+    else: return "⬜⬜⬜⬜ (4주+)"         # 4주 이상
 
 def clean_string(val):
     try:
@@ -111,8 +127,8 @@ def analyze_tna(file_bytes):
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
             try:
-                ls_val = pd.to_datetime(row.get(line_start_col), errors='coerce')
-                le_val = pd.to_datetime(row.get(line_end_col), errors='coerce')
+                ls_val = row.get(line_start_col)
+                le_val = row.get(line_end_col)
                 ex_fac_raw = row.get(ex_factory_col)
                 ex_fac_str = pd.to_datetime(ex_fac_raw, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ex_fac_raw, errors='coerce')) else '-'
                 
@@ -125,9 +141,9 @@ def analyze_tna(file_bytes):
                         "Division": str(row.get(div_col, 'N/A')),
                         "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                         "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
-                        "Line Start": ls_val.strftime('%m/%d') if pd.notnull(ls_val) else '-',
-                        "Line End": le_val.strftime('%m/%d') if pd.notnull(le_val) else '-',
-                        "Status": get_progress_bar(ls_val),
+                        "Line Start": str(ls_val),
+                        "Line End": str(le_val),
+                        "Weeks to Line Start": get_progress_bar(ls_val), # 제목 변경
                         "1st Ex-Factory": ex_fac_str,
                         "Qty": allocated_qty,
                         "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
