@@ -26,6 +26,13 @@ def get_weeks_display(ls_val):
         return f"{round(delta / 7, 1)}"
     except: return None
 
+def clean_string(val):
+    try:
+        s_val = str(val).strip().upper()
+        if s_val in ['NAN', 'NONE', '<NA>', 'NAT', 'NULL', '']: return ""
+        return s_val.replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
+    except: return ""
+
 def analyze_tna(file_bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
     all_sheets_data = {}
@@ -36,50 +43,68 @@ def analyze_tna(file_bytes):
         
         header_idx = None
         for idx, row in df_raw.iterrows():
-            row_str = "".join([str(v) for v in row.values])
-            if 'STYLE' in row_str.upper():
+            row_values = [clean_string(v) for v in row.values]
+            if any('STYLE' in v for v in row_values if v):
                 header_idx = idx; break
         if header_idx is None: continue
             
-        row0 = df_raw.iloc[header_idx].fillna("").astype(str)
-        row1 = df_raw.iloc[header_idx + 1].fillna("").astype(str)
-        combined_columns = [f"{p}_{s}".upper().replace(" ", "") for p, s in zip(row0, row1)]
+        row0 = df_raw.iloc[header_idx].astype(str).replace('nan', '').str.strip()
+        row1 = df_raw.iloc[header_idx + 1].astype(str).replace('nan', '').str.strip() if (header_idx + 1) < len(df_raw) else row0
+        
+        combined_columns = []
+        current_parent = ""
+        for p, s in zip(row0, row1):
+            if p != "": current_parent = p
+            if current_parent and s and p != s: combined_columns.append(f"{current_parent} {s}")
+            elif s: combined_columns.append(s)
+            elif current_parent: combined_columns.append(current_parent)
+            else: combined_columns.append("Unnamed")
+                
+        seen = {}
+        unique_columns = []
+        for col in combined_columns:
+            if col not in seen: seen[col] = 0; unique_columns.append(col)
+            else: seen[col] += 1; unique_columns.append(f"{col}_{seen[col]}")
         
         df = df_raw.iloc[header_idx + 2:].copy()
-        df.columns = combined_columns
+        df.columns = unique_columns
 
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
         fabric_in_fac_col, ex_factory_col, exf_qty_col, qty_col = None, None, None, None
 
         for col in df.columns:
-            if 'STYLE' in col and '배정' not in col: style_col = col
-            elif 'DIVISION' in col or 'DIV' in col: div_col = col
-            elif 'PRINT' in col: print_col = col
-            elif 'FWASH' in col: fwash_col = col
-            elif 'START' in col: line_start_col = col
-            elif 'END' in col and 'START' not in col: line_end_col = col
-            elif 'INFAC' in col: fabric_in_fac_col = col
-            elif '납기별수량' in col and 'EXF' in col: ex_factory_col = col
-            elif '납기별수량' in col and 'QTY' in col: exf_qty_col = col
-            elif 'TOTALORDERQTY' in col or '작업수량' in col: qty_col = col
+            c_clean = clean_string(col)
+            if 'STYLE' in c_clean and '배정' not in c_clean: style_col = col
+            elif any(k in c_clean for k in ['DIVISION', 'DIV']): div_col = col
+            elif 'PRINT' in c_clean: print_col = col
+            elif 'FWASH' in c_clean or 'F/WASH' in c_clean: fwash_col = col
+            elif 'START' in c_clean: line_start_col = col
+            elif 'END' in c_clean and 'START' not in c_clean: line_end_col = col
+            elif 'INFAC' in c_clean: fabric_in_fac_col = col
+            if '납기별수량' in c_clean:
+                if 'EXF' in c_clean: ex_factory_col = col
+                elif 'QTY' in c_clean: exf_qty_col = col
+            elif any(k in c_clean for k in ['TOTALORDERQTY', '작업수량']) and qty_col is None: qty_col = col
 
         sheet_rows = []
         for _, row in df.iterrows():
-            style_val = str(row.get(style_col, '')).strip()
-            if not style_val or style_val.lower() in ['nan', 'none', '']: continue
+            style_raw = str(row.get(style_col, '')).strip()
+            if not style_raw or style_raw.lower() in ['nan', 'none', '']: continue
             
-            exf_date = pd.to_datetime(row.get(ex_factory_col), errors='coerce')
+            ls_date = row.get(line_start_col)
+            ls_str = pd.to_datetime(ls_date, errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(ls_date, errors='coerce')) else '-'
+            
+            exf_val = row.get(ex_factory_col)
+            exf_date = pd.to_datetime(exf_val, errors='coerce')
             exf_str = exf_date.strftime('%m/%d') if pd.notnull(exf_date) else '-'
             
-            q_val = str(row.get(exf_qty_col, ''))
-            clean_q = ''.join(filter(str.isdigit, q_val))
-            exf_qty_display = f"{int(clean_q):,}" if clean_q else '-'
+            exf_qty_val = row.get(exf_qty_col)
+            exf_qty_display = f"{int(float(str(exf_qty_val).replace(',', ''))):,}" if pd.notnull(exf_qty_val) and str(exf_qty_val).replace('.','').replace(',','').isdigit() else '-'
             
-            ls_date = pd.to_datetime(row.get(line_start_col), errors='coerce')
-            ls_str = ls_date.strftime('%m/%d') if pd.notnull(ls_date) else '-'
+            qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
             sheet_rows.append({
-                "Style": style_val,
+                "Style": style_raw,
                 "Division": str(row.get(div_col, 'N/A')),
                 "Graphic": '🟢 O' if 'O' in str(row.get(print_col, '')) else '🔴 X',
                 "Wash": '🟢 O' if 'O' in str(row.get(fwash_col, '')) else '🔴 X',
@@ -88,7 +113,8 @@ def analyze_tna(file_bytes):
                 "Line End": pd.to_datetime(row.get(line_end_col), errors='coerce').strftime('%m/%d') if pd.notnull(pd.to_datetime(row.get(line_end_col), errors='coerce')) else '-',
                 "1st Ex-Factory": exf_str,
                 "1st Ex-Qty": exf_qty_display,
-                "Qty": int(pd.to_numeric(str(row.get(qty_col, 0)).replace(',', ''), errors='coerce') or 0),
+                "Qty": qty_val,
+                "Qty_Display": f"{qty_val:,}",
                 "Risk": '🔴 High' if pd.isnull(row.get(fabric_in_fac_col)) else '🟢 Low'
             })
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
@@ -126,4 +152,6 @@ if uploaded_file is not None:
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     return styles
 
-                st.dataframe(df_sheet.drop(columns=['Qty']).style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
+                # 수정된 부분: Qty_Display를 Qty로 이름 변경 및 1st Ex-Qty 포함
+                display_df = df_sheet.drop(columns=['Qty']).rename(columns={'Qty_Display': 'Qty'})
+                st.dataframe(display_df.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
