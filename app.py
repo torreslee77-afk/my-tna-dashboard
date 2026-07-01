@@ -88,39 +88,43 @@ def analyze_tna(file_bytes):
                 
             styles_list = [s.strip() for s in style_raw.replace('/', ',').split(',') if s.strip()]
             
-            # [수정] 에러의 원인이던 fabric_in_fac 체크를 더 안전하게 변경
-            fabric_status = "🔴 Late"
-            if fabric_in_fac_col and pd.notna(row.get(fabric_in_fac_col)):
-                fabric_status = "🟢 Ready"
+            # [안전 장치] row.get 사용 시 컬럼이 없으면 None을 반환하여 에러 방지
+            fabric_in_fac = row.get(fabric_in_fac_col) if fabric_in_fac_col else None
+            fabric_status = "🔴 Late" if pd.isna(fabric_in_fac) else "🟢 Ready"
             
-            # [수정] 수량 계산 로직 (기존 로직 보존)
+            # 수량 파싱 (안전 모드)
             qty_val = 0
             if qty_col:
                 raw_val = row.get(qty_col)
-                try: qty_val = int(float(str(raw_val).replace(',', '').replace('pcs', '').strip()))
-                except: qty_val = 0
-            
-            # 나머지 로직은 기존과 동일
-            has_graphic = '🔴 X'
-            if print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
-            elif emb_col and pd.notna(row.get(emb_col)) and str(row.get(emb_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_graphic = '🟢 O'
+                try:
+                    qty_val = int(float(str(raw_val).replace(',', '').replace('pcs', '').strip()))
+                except:
+                    qty_val = 0
                 
-            has_wash = '🔴 X'
-            if fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gwash_col and pd.notna(row.get(gwash_col)) and str(row.get(gwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
-            elif gdye_col and pd.notna(row.get(gdye_col)) and str(row.get(gdye_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']: has_wash = '🟢 O'
+            # 나머지 로직은 기존과 동일
+            has_graphic = '🟢 O' if (print_col and pd.notna(row.get(print_col)) and str(row.get(print_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']) else '🔴 X'
+            has_wash = '🟢 O' if (fwash_col and pd.notna(row.get(fwash_col)) and str(row.get(fwash_col)).strip() not in ['', 'nan', 'X', 'x', '🔴 X']) else '🔴 X'
 
-            # ... (나머지 로직은 기존과 완전 동일) ...
             for i, single_style in enumerate(styles_list):
-                allocated_qty = qty_val // len(styles_list)
-                if i == 0: allocated_qty += qty_val % len(styles_list)
+                allocated_qty = qty_val // len(styles_list) if len(styles_list) > 0 else 0
+                if i == 0 and len(styles_list) > 0: allocated_qty += qty_val % len(styles_list)
+
                 sheet_rows.append({
-                    "Style": single_style, "Qty": allocated_qty, "Graphic": has_graphic, "Wash": has_wash,
-                    "Line Start": line_start.strftime('%m/%d'), "Fabric Status": fabric_status
+                    "Style": single_style,
+                    "Qty": allocated_qty,
+                    "Graphic": has_graphic,
+                    "Wash": has_wash,
+                    "Fabric Status": fabric_status
                 })
         if sheet_rows:
             all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
             
     return all_sheets_data
 
-# (하단 UI는 기존과 동일하게 유지)
+uploaded_file = st.file_uploader("파일 업로드", type=["xlsx", "xls"])
+if uploaded_file is not None:
+    results = analyze_tna(uploaded_file.read())
+    total_qty = sum(df['Qty'].sum() for df in results.values())
+    st.metric("총 오더 수량 (QTY)", f"{total_qty:,} pcs")
+    for name, df in results.items():
+        st.dataframe(df)
