@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import io
 
-# 오늘 날짜 설정 (2026-07-01 기준)
-TODAY = pd.to_datetime('2026-07-01')
+# 업로드하는 시점의 오늘 날짜로 자동 설정
+TODAY = pd.to_datetime(datetime.now().date())
 
 # 1. 페이지 기본 설정 및 디자인
 st.set_page_config(page_title="YAKJIN TNA Ai Operational dashboard", page_icon="📊", layout="wide")
@@ -21,24 +21,28 @@ st.markdown("""
 st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">TNA Analysis summary (Sheet-specific)</div>', unsafe_allow_html=True)
 
+def get_progress_bar(line_start):
+    """업로드 당일 기준 남은 기간 시각화"""
+    if pd.isnull(line_start): return "⬜⬜⬜⬜"
+    
+    delta = (line_start - TODAY).days
+    weeks_left = delta / 7
+    
+    # 1. 기한이 지났거나 오늘인 경우
+    if delta < 0: return "🔴 기한 경과"
+    elif delta == 0: return "🟩🟩🟩🟩 (금일 투입)"
+    # 2. 미래의 경우
+    elif weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
+    elif weeks_left <= 2: return "🟩🟩⬜⬜" # 2주 남음
+    elif weeks_left <= 3: return "🟩⬜⬜⬜" # 3주 남음
+    else: return "⬜⬜⬜⬜"                # 4주 이상
+
 def clean_string(val):
     try:
         s_val = str(val).strip().upper()
         if s_val in ['NAN', 'NONE', '<NA>', 'NAT', 'NULL', '']: return ""
         return s_val.replace(" ", "").replace("'", "").replace("#", "").replace("/", "").replace("(", "").replace(")", "").replace("-", "").replace("\n", "").replace("\r", "")
     except: return ""
-
-def get_progress_bar(line_start):
-    """오늘(2026-07-01) 기준 남은 기간을 4등분 이모지로 변환"""
-    if pd.isnull(line_start): return "⬜⬜⬜⬜"
-    delta = (line_start - TODAY).days
-    weeks_left = delta / 7
-    
-    if weeks_left <= 0: return "🟩🟩🟩🟩"   # 투입/임박
-    elif weeks_left <= 1: return "🟩🟩🟩⬜" # 1주 남음
-    elif weeks_left <= 2: return "🟩🟩⬜⬜" # 2주 남음
-    elif weeks_left <= 3: return "🟩⬜⬜⬜" # 3주 남음
-    else: return "⬜⬜⬜⬜"                # 4주 이상
 
 def analyze_tna(file_bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
@@ -81,6 +85,7 @@ def analyze_tna(file_bytes):
         df = df_raw.iloc[header_idx + 2:].copy()
         df.columns = unique_columns
 
+        # 주요 컬럼 매핑
         style_col, div_col, print_col, fwash_col, line_start_col, line_end_col = None, None, None, None, None, None
         fabric_in_fac_col, ex_factory_col, qty_col = None, None, None
 
