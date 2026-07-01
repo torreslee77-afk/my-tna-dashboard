@@ -102,8 +102,11 @@ def analyze_tna(file_bytes):
             
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
-            # Risk 컬럼 데이터 추출
-            risk_val = str(row.get(risk_col, 'N/A')).strip().upper()
+            # Risk 컬럼 데이터 추출 및 결측치 처리
+            risk_raw = row.get(risk_col)
+            risk_val = str(risk_raw).strip().upper()
+            if pd.isnull(risk_raw) or risk_val in ['NAN', 'NONE', '']:
+                risk_val = 'N/A'
             
             sheet_rows.append({
                 "Division": str(row.get(div_col, 'N/A')),
@@ -143,7 +146,6 @@ if uploaded_file is not None:
                 
                 def color_rows(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                    # 1. To LS(Wks) 컬러링
                     for i, row in df.iterrows():
                         val = row['To LS (Wks)']
                         if val == "In Production": color = '#d3d3d3'
@@ -156,7 +158,6 @@ if uploaded_file is not None:
                             except: color = '#ffffff'
                         styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
                     
-                    # 2. Risk 컬러링
                     for i, row in df.iterrows():
                         if row['Risk'] in ['KEY', 'HIGH RISK']:
                             styles.loc[i, 'Risk'] = 'background-color: #ffcccc; color: red; font-weight: bold;'
