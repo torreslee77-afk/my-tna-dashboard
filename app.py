@@ -102,7 +102,6 @@ def analyze_tna(file_bytes):
             
             qty_val = int(float(str(row.get(qty_col, 0)).replace(',', ''))) if pd.notnull(row.get(qty_col)) else 0
             
-            # Risk 컬럼 데이터 추출 및 결측치 처리
             risk_raw = row.get(risk_col)
             risk_val = str(risk_raw).strip().upper()
             if pd.isnull(risk_raw) or risk_val in ['NAN', 'NONE', '']:
@@ -137,12 +136,13 @@ if uploaded_file is not None:
                 df_calc = df_sheet.copy()
                 df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
                 
+                # 순서 변경: TTL Styles - TTL Qty - Key/High Risk - Wash - Graphic
                 cols = st.columns(5)
                 cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                cols[1].markdown(f'<div class="metric-box"><h4>High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
-                cols[2].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
-                cols[3].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                cols[4].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[1].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
+                cols[2].markdown(f'<div class="metric-box"><h4>Key/High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
+                cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                 
                 def color_rows(df):
                     styles = pd.DataFrame('', index=df.index, columns=df.columns)
