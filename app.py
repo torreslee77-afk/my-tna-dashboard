@@ -6,12 +6,11 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 수정: 제목 잘림 방지
+# CSS 스타일 설정 (제목 잘림 방지용 최소화)
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     .metric-box { padding: 10px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 10px; }
-    .main-title { font-size: 24px; font-weight: bold; color: #1E3A8A; margin-bottom: 20px; word-wrap: break-word; }
     div[data-testid="stSidebar"] { width: 250px; }
     </style>
 """, unsafe_allow_html=True)
@@ -116,7 +115,7 @@ def analyze_tna(file_bytes):
 
 # --- [AD Sample 함수] ---
 def run_ad_summary():
-    st.title("📦 AD Sample Summary")
+    st.header("📦 AD Sample Summary")
     uploaded_file = st.file_uploader("AD Sample raw data 파일을 업로드하세요.", type=["xlsx"], key="ad_uploader")
     if uploaded_file:
         try:
@@ -150,7 +149,7 @@ def run_ad_summary():
 
 # --- 메인 실행 ---
 if menu == "TNA Dashboard":
-    st.markdown('<div class="main-title">📊 YAKJIN TNA AI Operational Dashboard</div>', unsafe_allow_html=True)
+    st.header("📊 YAKJIN TNA AI Operational Dashboard")
     uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"], key="tna_uploader")
     if uploaded_file:
         results = analyze_tna(uploaded_file.read())
