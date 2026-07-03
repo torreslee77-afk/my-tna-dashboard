@@ -6,7 +6,7 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정: 상단 여백 보완
+# CSS 스타일 설정: 상단 여백 보완 및 UI 구성
 st.markdown("""
     <style>
     .block-container { padding-top: 3rem; padding-bottom: 1rem; }
@@ -15,7 +15,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 사이드바 메뉴: radio 버튼으로 변경하여 상시 노출
+# 세션 상태 초기화 (데이터 유지용)
+if 'tna_data' not in st.session_state: st.session_state.tna_data = None
+if 'ad_data' not in st.session_state: st.session_state.ad_data = None
+
+# 사이드바 메뉴: radio 버튼으로 항상 노출
 menu = st.sidebar.radio("메뉴 선택", ["TNA Dashboard", "AD Sample Summary"])
 
 # --- [공통 함수: 컬럼명 찾기] ---
@@ -119,22 +123,24 @@ def run_ad_summary():
     st.header("📦 AD Sample Summary")
     uploaded_file = st.file_uploader("AD Sample raw data 파일을 업로드하세요.", type=["xlsx"], key="ad_uploader")
     if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file)
-            df.columns = df.columns.str.strip()
-            qty_col = find_column(df, ['Requested Qty', 'Qty', 'Quantity', '요청수량'])
-            send_col = find_column(df, ['Estimated Send Date', 'Send Date', '발송일'])
-            arr_col = find_column(df, ['Estimated Arrival Date', 'Arrival Date', '도착일'])
-            dept_col = find_column(df, ['Department', 'Dept', '부서'])
-            class_col = find_column(df, ['Class', '구분'])
-            style_col = find_column(df, ['Style #', 'Style', '스타일'])
-            color_col = find_column(df, ['Color', '컬러'])
-            if not all([qty_col, send_col, arr_col, dept_col, class_col]):
-                st.error(f"필수 컬럼(Department, Class 포함)을 찾을 수 없습니다.")
-                return
+        st.session_state.ad_data = pd.read_excel(uploaded_file)
+    
+    if st.session_state.ad_data is not None:
+        df = st.session_state.ad_data
+        df.columns = df.columns.str.strip()
+        qty_col = find_column(df, ['Requested Qty', 'Qty', 'Quantity', '요청수량'])
+        send_col = find_column(df, ['Estimated Send Date', 'Send Date', '발송일'])
+        arr_col = find_column(df, ['Estimated Arrival Date', 'Arrival Date', '도착일'])
+        dept_col = find_column(df, ['Department', 'Dept', '부서'])
+        class_col = find_column(df, ['Class', '구분'])
+        style_col = find_column(df, ['Style #', 'Style', '스타일'])
+        color_col = find_column(df, ['Color', '컬러'])
+        
+        if all([qty_col, send_col, arr_col, dept_col, class_col]):
             df['Qty'] = pd.to_numeric(df[qty_col], errors='coerce').fillna(0)
             df['SendDate'] = pd.to_datetime(df[send_col], errors='coerce').dt.strftime('%Y-%m-%d')
             df['ArrDate'] = pd.to_datetime(df[arr_col], errors='coerce').dt.strftime('%Y-%m-%d')
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.write("**부서/구분별 총 수량**")
@@ -146,38 +152,40 @@ def run_ad_summary():
                 st.dataframe(daily_sum, use_container_width=True)
             st.write("**상세 내역**")
             st.dataframe(df[[dept_col, class_col, style_col, color_col, 'SendDate', 'ArrDate', 'Qty']], use_container_width=True)
-        except Exception as e:
-            st.error(f"데이터 처리 오류: {e}")
+        else:
+            st.error("데이터 파일에서 필수 컬럼(Department, Class 등)을 찾을 수 없습니다.")
 
 # --- 메인 실행 ---
 if menu == "TNA Dashboard":
     st.header("📊 YAKJIN TNA AI Operational Dashboard")
     uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"], key="tna_uploader")
     if uploaded_file:
-        results = analyze_tna(uploaded_file.read())
-        if results:
-            all_df = pd.concat(results.values(), ignore_index=True)
-            tab_names = ["All Summary"] + list(results.keys())
-            tabs = st.tabs(tab_names)
-            for num, tab_name in enumerate(tab_names):
-                with tabs[num]:
-                    df_sheet = all_df if tab_name == "All Summary" else results[tab_name]
-                    df_calc = df_sheet.copy()
-                    df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
-                    cols = st.columns(5)
-                    cols[0].markdown(f'<div class="metric-box"><h4>Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                    cols[1].markdown(f'<div class="metric-box"><h4>Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
-                    cols[2].markdown(f'<div class="metric-box"><h4>Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
-                    cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                    cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                    
-                    def highlight_risk(df):
-                        style_df = pd.DataFrame('', index=df.index, columns=df.columns)
-                        mask = df['Risk'].isin(['KEY', 'HIGH RISK'])
-                        style_df.loc[mask, 'Risk'] = 'background-color: #ffcccc'
-                        return style_df
-                    
-                    st.dataframe(df_sheet.style.apply(highlight_risk, axis=None), use_container_width=True, hide_index=True)
+        st.session_state.tna_data = analyze_tna(uploaded_file.read())
+        
+    if st.session_state.tna_data:
+        results = st.session_state.tna_data
+        all_df = pd.concat(results.values(), ignore_index=True)
+        tab_names = ["All Summary"] + list(results.keys())
+        tabs = st.tabs(tab_names)
+        for num, tab_name in enumerate(tab_names):
+            with tabs[num]:
+                df_sheet = all_df if tab_name == "All Summary" else results[tab_name]
+                df_calc = df_sheet.copy()
+                df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
+                cols = st.columns(5)
+                cols[0].markdown(f'<div class="metric-box"><h4>Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
+                cols[1].markdown(f'<div class="metric-box"><h4>Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
+                cols[2].markdown(f'<div class="metric-box"><h4>Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
+                cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                
+                def highlight_risk(df):
+                    style_df = pd.DataFrame('', index=df.index, columns=df.columns)
+                    mask = df['Risk'].isin(['KEY', 'HIGH RISK'])
+                    style_df.loc[mask, 'Risk'] = 'background-color: #ffcccc'
+                    return style_df
+                
+                st.dataframe(df_sheet.style.apply(highlight_risk, axis=None), use_container_width=True, hide_index=True)
 
 elif menu == "AD Sample Summary":
     run_ad_summary()
