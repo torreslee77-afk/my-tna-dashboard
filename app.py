@@ -6,10 +6,10 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정 (제목 잘림 방지용 최소화)
+# CSS 스타일 설정: 상단 여백 보완
 st.markdown("""
     <style>
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .block-container { padding-top: 3rem; padding-bottom: 1rem; }
     .metric-box { padding: 10px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     div[data-testid="stSidebar"] { width: 250px; }
     </style>
