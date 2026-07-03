@@ -6,7 +6,7 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정: 간격 최소화 및 사이드바 상시 노출(일부 환경)
+# CSS 스타일 설정: 간격 최소화 및 사이드바 상시 노출
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
@@ -117,7 +117,6 @@ def run_ad_summary():
             df['Requested Qty'] = pd.to_numeric(df['Requested Qty'], errors='coerce').fillna(0)
             df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce').dt.strftime('%Y-%m-%d')
             df['Estimated Arrival Date'] = pd.to_datetime(df['Estimated Arrival Date'], errors='coerce').dt.strftime('%Y-%m-%d')
-
             col1, col2 = st.columns(2)
             with col1:
                 st.write("**Department별 총 수량**")
@@ -126,9 +125,7 @@ def run_ad_summary():
                 st.write("**최근 5일 샘플 발송 예정 수량**")
                 daily_sum = df.groupby('Estimated Send Date')['Requested Qty'].sum().sort_index(ascending=False).head(5).reset_index()
                 st.dataframe(daily_sum, use_container_width=True)
-
             st.write("**상세 내역**")
-            # 사이즈 제외, 스타일별 합계
             group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date']
             detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
             detailed_df.rename(columns={'Style #': 'Style#', 'Estimated Arrival Date': 'Estimated Arrival date'}, inplace=True)
@@ -157,7 +154,14 @@ if menu == "TNA Dashboard":
                     cols[2].markdown(f'<div class="metric-box"><h4>Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
                     cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                     cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                    st.dataframe(df_sheet, use_container_width=True, hide_index=True)
+                    
+                    # Risk 하이라이트 적용
+                    def color_rows(row):
+                        if row['Risk'] in ['KEY', 'HIGH RISK']:
+                            return ['background-color: #ffcccc'] * len(row)
+                        return [''] * len(row)
+                    
+                    st.dataframe(df_sheet.style.apply(color_rows, axis=1), use_container_width=True, hide_index=True)
 
 elif menu == "AD Sample Summary":
     run_ad_summary()
