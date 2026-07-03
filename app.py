@@ -128,16 +128,18 @@ def run_ad_summary():
             class_col = find_column(df, ['Class', '구분'])
             style_col = find_column(df, ['Style #', 'Style', '스타일'])
             color_col = find_column(df, ['Color', '컬러'])
-            if not all([qty_col, send_col, arr_col, dept_col]):
-                st.error(f"필수 컬럼을 찾을 수 없습니다.")
+            if not all([qty_col, send_col, arr_col, dept_col, class_col]):
+                st.error(f"필수 컬럼(Department, Class 포함)을 찾을 수 없습니다.")
                 return
             df['Qty'] = pd.to_numeric(df[qty_col], errors='coerce').fillna(0)
             df['SendDate'] = pd.to_datetime(df[send_col], errors='coerce').dt.strftime('%Y-%m-%d')
             df['ArrDate'] = pd.to_datetime(df[arr_col], errors='coerce').dt.strftime('%Y-%m-%d')
             col1, col2 = st.columns(2)
             with col1:
-                st.write("**부서별 총 수량**")
-                st.dataframe(df.groupby(dept_col)['Qty'].sum().reset_index(), use_container_width=True)
+                st.write("**부서/구분별 총 수량**")
+                # 부서 + 구분(Class)으로 그룹화
+                summary_df = df.groupby([dept_col, class_col])['Qty'].sum().reset_index()
+                st.dataframe(summary_df, use_container_width=True)
             with col2:
                 st.write("**최근 5일 샘플 발송 예정 수량**")
                 daily_sum = df.groupby('SendDate')['Qty'].sum().sort_index(ascending=False).head(5).reset_index()
