@@ -18,7 +18,7 @@ st.markdown("""
 # 사이드바 메뉴 설정
 menu = st.sidebar.selectbox("메뉴 선택", ["TNA Dashboard", "AD Sample Summary"])
 
-# --- [기존 TNA 관련 함수들] ---
+# --- [TNA 관련 함수들] ---
 def get_weeks_display(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
@@ -112,7 +112,10 @@ def run_ad_summary():
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            # 수치 데이터 처리
+            # 컬럼 공백 제거
+            df.columns = df.columns.str.strip()
+            
+            # 데이터 처리
             df['Requested Qty'] = pd.to_numeric(df['Requested Qty'], errors='coerce').fillna(0)
             df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce')
 
@@ -127,13 +130,16 @@ def run_ad_summary():
                 daily_sum = df.groupby('Estimated Send Date')['Requested Qty'].sum().sort_index(ascending=False).head(5).reset_index()
                 st.dataframe(daily_sum, use_container_width=True)
 
-            # 2. 상세 내역 (사이즈 합계 반영)
+            # 2. 상세 내역 (요청 순서 적용)
             st.write("**상세 내역**")
             group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size']
             detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
-            st.dataframe(detailed_df, use_container_width=True)
+            # 순서 재정렬
+            column_order = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size', 'Requested Qty']
+            st.dataframe(detailed_df[column_order], use_container_width=True)
+            
         except Exception as e:
-            st.error(f"데이터 처리 오류: {e}")
+            st.error(f"데이터 처리 오류: {e}. 엑셀 헤더명을 확인하세요: {list(df.columns)}")
 
 # --- 메인 실행 로직 ---
 if menu == "TNA Dashboard":
