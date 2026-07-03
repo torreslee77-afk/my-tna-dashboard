@@ -6,12 +6,12 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정
+# CSS 스타일 수정: 제목 잘림 방지
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
     .metric-box { padding: 10px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 10px; }
-    .main-title { font-size: 2.5em; font-weight: bold; color: #1E3A8A; margin-bottom: 15px; }
+    .main-title { font-size: 24px; font-weight: bold; color: #1E3A8A; margin-bottom: 20px; word-wrap: break-word; }
     div[data-testid="stSidebar"] { width: 250px; }
     </style>
 """, unsafe_allow_html=True)
@@ -31,7 +31,7 @@ def find_column(df, possible_names):
 def get_weeks_display(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
-        today = datetime(2026, 7, 3) # 현재 시간 기준
+        today = datetime(2026, 7, 3)
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
         if delta < 0: return "In Production"
@@ -150,7 +150,7 @@ def run_ad_summary():
 
 # --- 메인 실행 ---
 if menu == "TNA Dashboard":
-    st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-title">📊 YAKJIN TNA AI Operational Dashboard</div>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"], key="tna_uploader")
     if uploaded_file:
         results = analyze_tna(uploaded_file.read())
