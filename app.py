@@ -15,7 +15,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-menu = st.sidebar.selectbox("메뉴 선택", ["TNA Dashboard", "AD Sample Summary"])
+# 사이드바 메뉴: radio 버튼으로 변경하여 상시 노출
+menu = st.sidebar.radio("메뉴 선택", ["TNA Dashboard", "AD Sample Summary"])
 
 # --- [공통 함수: 컬럼명 찾기] ---
 def find_column(df, possible_names):
@@ -137,7 +138,6 @@ def run_ad_summary():
             col1, col2 = st.columns(2)
             with col1:
                 st.write("**부서/구분별 총 수량**")
-                # 부서 + 구분(Class)으로 그룹화
                 summary_df = df.groupby([dept_col, class_col])['Qty'].sum().reset_index()
                 st.dataframe(summary_df, use_container_width=True)
             with col2:
