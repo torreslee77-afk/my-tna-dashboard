@@ -3,22 +3,16 @@ import pandas as pd
 from datetime import datetime
 import io
 
-# 1. 페이지 설정 (사이드바 펼쳐짐 고정)
-st.set_page_config(
-    page_title="YAKJIN Operational Dashboard", 
-    page_icon="📊", 
-    layout="wide",
-    initial_sidebar_state="expanded" 
-)
+# 1. 페이지 설정
+st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정: 간격 최소화
+# CSS 스타일 설정: 간격 최소화 및 사이드바 상시 노출(일부 환경)
 st.markdown("""
     <style>
-    .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-    .metric-box { padding: 5px; background-color: #F3F4F6; border-radius: 5px; text-align: center; margin-bottom: 5px; }
-    .main-title { font-size: 2em; font-weight: bold; color: #1E3A8A; margin-bottom: 10px; }
-    div[data-testid="stSidebar"] { min-width: 200px; max-width: 250px; }
-    h4 { margin-top: 0px; margin-bottom: 0px; }
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .metric-box { padding: 10px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+    .main-title { font-size: 2.5em; font-weight: bold; color: #1E3A8A; margin-bottom: 15px; }
+    div[data-testid="stSidebar"] { width: 250px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -29,7 +23,7 @@ menu = st.sidebar.selectbox("메뉴 선택", ["TNA Dashboard", "AD Sample Summar
 def get_weeks_display(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
-        today = datetime(2026, 7, 3)
+        today = datetime(2026, 7, 1)
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
         if delta < 0: return "In Production"
@@ -134,6 +128,7 @@ def run_ad_summary():
                 st.dataframe(daily_sum, use_container_width=True)
 
             st.write("**상세 내역**")
+            # 사이즈 제외, 스타일별 합계
             group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date']
             detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
             detailed_df.rename(columns={'Style #': 'Style#', 'Estimated Arrival Date': 'Estimated Arrival date'}, inplace=True)
@@ -154,6 +149,14 @@ if menu == "TNA Dashboard":
             for num, tab_name in enumerate(tab_names):
                 with tabs[num]:
                     df_sheet = all_df if tab_name == "All Summary" else results[tab_name]
+                    df_calc = df_sheet.copy()
+                    df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
+                    cols = st.columns(5)
+                    cols[0].markdown(f'<div class="metric-box"><h4>Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
+                    cols[1].markdown(f'<div class="metric-box"><h4>Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
+                    cols[2].markdown(f'<div class="metric-box"><h4>Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
+                    cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                    cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                     st.dataframe(df_sheet, use_container_width=True, hide_index=True)
 
 elif menu == "AD Sample Summary":
