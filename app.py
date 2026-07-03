@@ -105,45 +105,74 @@ def analyze_tna(file_bytes):
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
 
-# --- [기능 2: AD Sample 분석 로직 수정본] ---
+# --- [AD Sample 분석 함수] ---
 def run_ad_summary():
     st.title("📦 AD Sample Summary")
-    uploaded_file = st.file_uploader("AD Sample raw data 파일을 업로드하세요.", type=["xlsx"], key="ad")
-    
+    uploaded_file = st.file_uploader("AD Sample raw data 파일을 업로드하세요.", type=["xlsx"], key="ad_uploader")
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            
-            # 1. 상단 집계 영역
-            st.subheader("Summary")
+            # 수치 데이터 처리
+            df['Requested Qty'] = pd.to_numeric(df['Requested Qty'], errors='coerce').fillna(0)
+            df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce')
+
+            # 1. 상단 요약 영역
             col1, col2 = st.columns(2)
-            
-            # 부서별 총 수량 집계
             with col1:
                 st.write("**Department별 총 수량**")
-                dept_summary = df.groupby('Department')['Requested Qty'].sum().reset_index()
-                st.dataframe(dept_summary, use_container_width=True)
-            
-            # 날짜별 수량 집계 (가장 최근 5일)
+                dept_sum = df.groupby('Department')['Requested Qty'].sum().reset_index()
+                st.dataframe(dept_sum, use_container_width=True)
             with col2:
                 st.write("**최근 5일 샘플 발송 예정 수량**")
-                df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'])
-                daily_summary = df.groupby('Estimated Send Date')['Requested Qty'].sum().reset_index()
-                daily_summary = daily_summary.sort_values('Estimated Send Date', ascending=False).head(5)
-                st.dataframe(daily_summary, use_container_width=True)
-            
-            # 2. 상세 내역 영역 (요청하신 순서대로)
-            st.subheader("Detailed Breakdown")
-            
-            # 사이즈별 합계를 위해 그룹화
+                daily_sum = df.groupby('Estimated Send Date')['Requested Qty'].sum().sort_index(ascending=False).head(5).reset_index()
+                st.dataframe(daily_sum, use_container_width=True)
+
+            # 2. 상세 내역 (사이즈 합계 반영)
+            st.write("**상세 내역**")
             group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size']
             detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
-            
-            # 컬럼 순서 재정렬
-            column_order = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size', 'Requested Qty']
-            detailed_df = detailed_df[column_order]
-            
             st.dataframe(detailed_df, use_container_width=True)
-            
         except Exception as e:
-            st.error(f"데이터 처리 중 오류가 발생했습니다: {e}")
+            st.error(f"데이터 처리 오류: {e}")
+
+# --- 메인 실행 로직 ---
+if menu == "TNA Dashboard":
+    st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"], key="tna_uploader")
+    if uploaded_file:
+        results = analyze_tna(uploaded_file.read())
+        if results:
+            all_df = pd.concat(results.values(), ignore_index=True)
+            tab_names = ["All Summary"] + list(results.keys())
+            tabs = st.tabs(tab_names)
+            for num, tab_name in enumerate(tab_names):
+                with tabs[num]:
+                    df_sheet = all_df if tab_name == "All Summary" else results[tab_name]
+                    df_calc = df_sheet.copy()
+                    df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
+                    cols = st.columns(5)
+                    cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
+                    cols[1].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
+                    cols[2].markdown(f'<div class="metric-box"><h4>Key/High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
+                    cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                    cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
+                    def color_rows(df):
+                        styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                        for i, row in df.iterrows():
+                            val = row['To LS (Wks)']
+                            if val == "In Production": color = '#d3d3d3'
+                            else:
+                                try:
+                                    v = float(val)
+                                    if v <= 2: color = '#ffcccc'
+                                    elif v <= 4: color = '#ffe6cc'
+                                    else: color = '#d4edda'
+                                except: color = '#ffffff'
+                            styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
+                            if row['Risk'] in ['KEY', 'HIGH RISK']:
+                                styles.loc[i, 'Risk'] = 'background-color: #ffcccc; color: red; font-weight: bold;'
+                        return styles
+                    st.dataframe(df_sheet.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
+
+elif menu == "AD Sample Summary":
+    run_ad_summary()
