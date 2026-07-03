@@ -1,17 +1,18 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import io
 
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정
+# CSS 스타일 설정: 간격 최소화 및 사이드바 상시 노출(일부 환경)
 st.markdown("""
     <style>
-    .block-container { padding-top: 1.5rem; }
-    .metric-box { padding: 15px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 40px; }
-    .main-title { font-size: 3em; font-weight: bold; color: #1E3A8A; margin-bottom: 25px; }
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    .metric-box { padding: 10px; background-color: #F3F4F6; border-radius: 8px; text-align: center; margin-bottom: 10px; }
+    .main-title { font-size: 2.5em; font-weight: bold; color: #1E3A8A; margin-bottom: 15px; }
+    div[data-testid="stSidebar"] { width: 250px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -112,34 +113,28 @@ def run_ad_summary():
     if uploaded_file:
         try:
             df = pd.read_excel(uploaded_file)
-            # 컬럼 공백 제거
             df.columns = df.columns.str.strip()
-            
-            # 데이터 처리
             df['Requested Qty'] = pd.to_numeric(df['Requested Qty'], errors='coerce').fillna(0)
-            df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce')
+            df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce').dt.strftime('%Y-%m-%d')
+            df['Estimated Arrival Date'] = pd.to_datetime(df['Estimated Arrival Date'], errors='coerce').dt.strftime('%Y-%m-%d')
 
-            # 1. 상단 요약 영역
             col1, col2 = st.columns(2)
             with col1:
                 st.write("**Department별 총 수량**")
-                dept_sum = df.groupby('Department')['Requested Qty'].sum().reset_index()
-                st.dataframe(dept_sum, use_container_width=True)
+                st.dataframe(df.groupby('Department')['Requested Qty'].sum().reset_index(), use_container_width=True)
             with col2:
                 st.write("**최근 5일 샘플 발송 예정 수량**")
                 daily_sum = df.groupby('Estimated Send Date')['Requested Qty'].sum().sort_index(ascending=False).head(5).reset_index()
                 st.dataframe(daily_sum, use_container_width=True)
 
-            # 2. 상세 내역 (요청 순서 적용)
             st.write("**상세 내역**")
-            group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size']
+            # 사이즈 제외, 스타일별 합계
+            group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date']
             detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
-            # 순서 재정렬
-            column_order = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date', 'Size', 'Requested Qty']
-            st.dataframe(detailed_df[column_order], use_container_width=True)
-            
+            detailed_df.rename(columns={'Style #': 'Style#', 'Estimated Arrival Date': 'Estimated Arrival date'}, inplace=True)
+            st.dataframe(detailed_df, use_container_width=True)
         except Exception as e:
-            st.error(f"데이터 처리 오류: {e}. 엑셀 헤더명을 확인하세요: {list(df.columns)}")
+            st.error(f"데이터 처리 오류: {e}")
 
 # --- 메인 실행 로직 ---
 if menu == "TNA Dashboard":
@@ -157,28 +152,12 @@ if menu == "TNA Dashboard":
                     df_calc = df_sheet.copy()
                     df_calc['Qty_Num'] = df_calc['Qty'].astype(str).str.replace(',', '').astype(int)
                     cols = st.columns(5)
-                    cols[0].markdown(f'<div class="metric-box"><h4>TTL Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
-                    cols[1].markdown(f'<div class="metric-box"><h4>TTL Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
-                    cols[2].markdown(f'<div class="metric-box"><h4>Key/High Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
+                    cols[0].markdown(f'<div class="metric-box"><h4>Styles</h4><h2>{len(df_sheet):,}</h2></div>', unsafe_allow_html=True)
+                    cols[1].markdown(f'<div class="metric-box"><h4>Qty</h4><h2>{df_calc["Qty_Num"].sum():,}</h2></div>', unsafe_allow_html=True)
+                    cols[2].markdown(f'<div class="metric-box"><h4>Risk</h4><h2 style="color:red;">{len(df_sheet[df_sheet["Risk"].isin(["KEY", "HIGH RISK"])]):,}</h2></div>', unsafe_allow_html=True)
                     cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                     cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
-                    def color_rows(df):
-                        styles = pd.DataFrame('', index=df.index, columns=df.columns)
-                        for i, row in df.iterrows():
-                            val = row['To LS (Wks)']
-                            if val == "In Production": color = '#d3d3d3'
-                            else:
-                                try:
-                                    v = float(val)
-                                    if v <= 2: color = '#ffcccc'
-                                    elif v <= 4: color = '#ffe6cc'
-                                    else: color = '#d4edda'
-                                except: color = '#ffffff'
-                            styles.loc[i, 'To LS (Wks)'] = f'background-color: {color}'
-                            if row['Risk'] in ['KEY', 'HIGH RISK']:
-                                styles.loc[i, 'Risk'] = 'background-color: #ffcccc; color: red; font-weight: bold;'
-                        return styles
-                    st.dataframe(df_sheet.style.apply(color_rows, axis=None), use_container_width=True, hide_index=True)
+                    st.dataframe(df_sheet, use_container_width=True, hide_index=True)
 
 elif menu == "AD Sample Summary":
     run_ad_summary()
