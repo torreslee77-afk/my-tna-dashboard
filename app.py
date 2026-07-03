@@ -6,7 +6,7 @@ import io
 # 1. 페이지 설정
 st.set_page_config(page_title="YAKJIN Operational Dashboard", page_icon="📊", layout="wide")
 
-# CSS 스타일 설정: 간격 최소화 및 사이드바 상시 노출
+# CSS 스타일 설정
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem; padding-bottom: 1rem; }
@@ -16,14 +16,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 사이드바 메뉴 설정
 menu = st.sidebar.selectbox("메뉴 선택", ["TNA Dashboard", "AD Sample Summary"])
 
-# --- [TNA 관련 함수들] ---
+# --- [공통 함수: 컬럼명 찾기] ---
+def find_column(df, possible_names):
+    for col in df.columns:
+        clean_col = str(col).strip().upper().replace(" ", "")
+        for name in possible_names:
+            if name.upper().replace(" ", "") == clean_col:
+                return col
+    return None
+
+# --- [TNA 함수] ---
 def get_weeks_display(ls_val):
     if pd.isnull(ls_val) or ls_val == '-': return None
     try:
-        today = datetime(2026, 7, 1)
+        today = datetime(2026, 7, 3) # 현재 시간 기준
         target_date = datetime.strptime(f"2026/{ls_val}", "%Y/%m/%d")
         delta = (target_date - today).days
         if delta < 0: return "In Production"
@@ -106,7 +114,7 @@ def analyze_tna(file_bytes):
         if sheet_rows: all_sheets_data[sheet_name] = pd.DataFrame(sheet_rows)
     return all_sheets_data
 
-# --- [AD Sample 분석 함수] ---
+# --- [AD Sample 함수] ---
 def run_ad_summary():
     st.title("📦 AD Sample Summary")
     uploaded_file = st.file_uploader("AD Sample raw data 파일을 업로드하세요.", type=["xlsx"], key="ad_uploader")
@@ -114,26 +122,33 @@ def run_ad_summary():
         try:
             df = pd.read_excel(uploaded_file)
             df.columns = df.columns.str.strip()
-            df['Requested Qty'] = pd.to_numeric(df['Requested Qty'], errors='coerce').fillna(0)
-            df['Estimated Send Date'] = pd.to_datetime(df['Estimated Send Date'], errors='coerce').dt.strftime('%Y-%m-%d')
-            df['Estimated Arrival Date'] = pd.to_datetime(df['Estimated Arrival Date'], errors='coerce').dt.strftime('%Y-%m-%d')
+            qty_col = find_column(df, ['Requested Qty', 'Qty', 'Quantity', '요청수량'])
+            send_col = find_column(df, ['Estimated Send Date', 'Send Date', '발송일'])
+            arr_col = find_column(df, ['Estimated Arrival Date', 'Arrival Date', '도착일'])
+            dept_col = find_column(df, ['Department', 'Dept', '부서'])
+            class_col = find_column(df, ['Class', '구분'])
+            style_col = find_column(df, ['Style #', 'Style', '스타일'])
+            color_col = find_column(df, ['Color', '컬러'])
+            if not all([qty_col, send_col, arr_col, dept_col]):
+                st.error(f"필수 컬럼을 찾을 수 없습니다.")
+                return
+            df['Qty'] = pd.to_numeric(df[qty_col], errors='coerce').fillna(0)
+            df['SendDate'] = pd.to_datetime(df[send_col], errors='coerce').dt.strftime('%Y-%m-%d')
+            df['ArrDate'] = pd.to_datetime(df[arr_col], errors='coerce').dt.strftime('%Y-%m-%d')
             col1, col2 = st.columns(2)
             with col1:
-                st.write("**Department별 총 수량**")
-                st.dataframe(df.groupby('Department')['Requested Qty'].sum().reset_index(), use_container_width=True)
+                st.write("**부서별 총 수량**")
+                st.dataframe(df.groupby(dept_col)['Qty'].sum().reset_index(), use_container_width=True)
             with col2:
                 st.write("**최근 5일 샘플 발송 예정 수량**")
-                daily_sum = df.groupby('Estimated Send Date')['Requested Qty'].sum().sort_index(ascending=False).head(5).reset_index()
+                daily_sum = df.groupby('SendDate')['Qty'].sum().sort_index(ascending=False).head(5).reset_index()
                 st.dataframe(daily_sum, use_container_width=True)
             st.write("**상세 내역**")
-            group_cols = ['Department', 'Class', 'Style #', 'Color', 'Estimated Send Date', 'Estimated Arrival Date']
-            detailed_df = df.groupby(group_cols)['Requested Qty'].sum().reset_index()
-            detailed_df.rename(columns={'Style #': 'Style#', 'Estimated Arrival Date': 'Estimated Arrival date'}, inplace=True)
-            st.dataframe(detailed_df, use_container_width=True)
+            st.dataframe(df[[dept_col, class_col, style_col, color_col, 'SendDate', 'ArrDate', 'Qty']], use_container_width=True)
         except Exception as e:
             st.error(f"데이터 처리 오류: {e}")
 
-# --- 메인 실행 로직 ---
+# --- 메인 실행 ---
 if menu == "TNA Dashboard":
     st.markdown('<div class="main-title">📊 YAKJIN TNA Ai Operational dashboard</div>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("TNA 엑셀 파일을 업로드하세요.", type=["xlsx", "xls"], key="tna_uploader")
@@ -155,13 +170,13 @@ if menu == "TNA Dashboard":
                     cols[3].markdown(f'<div class="metric-box"><h4>Wash</h4><h2>{len(df_sheet[df_sheet["Wash"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                     cols[4].markdown(f'<div class="metric-box"><h4>Graphic</h4><h2>{len(df_sheet[df_sheet["Graphic"] == "🟢 O"]):,}</h2></div>', unsafe_allow_html=True)
                     
-                    # Risk 하이라이트 적용
-                    def color_rows(row):
-                        if row['Risk'] in ['KEY', 'HIGH RISK']:
-                            return ['background-color: #ffcccc'] * len(row)
-                        return [''] * len(row)
+                    def highlight_risk(df):
+                        style_df = pd.DataFrame('', index=df.index, columns=df.columns)
+                        mask = df['Risk'].isin(['KEY', 'HIGH RISK'])
+                        style_df.loc[mask, 'Risk'] = 'background-color: #ffcccc'
+                        return style_df
                     
-                    st.dataframe(df_sheet.style.apply(color_rows, axis=1), use_container_width=True, hide_index=True)
+                    st.dataframe(df_sheet.style.apply(highlight_risk, axis=None), use_container_width=True, hide_index=True)
 
 elif menu == "AD Sample Summary":
     run_ad_summary()
